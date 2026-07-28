@@ -30,7 +30,7 @@ services:
       - .env
 
     ports:
-      - "8000:8000"
+      - "3000:8000"
 
     volumes:
       - .:/app
@@ -43,7 +43,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
 
-    command: bun run --hot src/server.ts
+    command: npx tsx watch src/server.ts
 
 volumes:
   redis-data:

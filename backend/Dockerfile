@@ -22,6 +22,7 @@ WORKDIR /app
 
 # Install OpenSSL
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y openssl && \
     openssl version && \
     rm -rf /var/lib/apt/lists/*
