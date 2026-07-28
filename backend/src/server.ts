@@ -2,7 +2,7 @@ import { env } from "./config/env.js";
 import { app } from "./app.js";
 import { logger } from "./lib/logger.js";
 
-const server = app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, "0.0.0.0", () => {
   logger.info(`Server started on port ${env.PORT} in ${env.NODE_ENV} mode`);
 });
 
