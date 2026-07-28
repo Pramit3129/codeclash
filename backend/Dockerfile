@@ -22,16 +22,21 @@ FROM node:22-slim AS runner
 
 WORKDIR /app
 
+RUN apt-get update && \
+    apt-get install -y openssl && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 ENV PORT=8000
 
-# Copy necessary production artifacts
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 
+# Generate Prisma for THIS image
+RUN npx prisma generate
+
 EXPOSE 8000
 
-# Command to run the application using Node.js
-CMD ["node", "dist/server.js"]
+CMD ["node","dist/server.js"]
