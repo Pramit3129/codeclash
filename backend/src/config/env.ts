@@ -21,6 +21,6 @@ if (!_env.success) {
 
 export const env = _env.data;
 
-console.log("[DEBUG] process.env.REDIS_URL =", process.env.REDIS_URL);
-console.log("[DEBUG] env.REDIS_URL =", env.REDIS_URL);
+// console.log("[DEBUG] process.env.REDIS_URL =", process.env.REDIS_URL);
+// console.log("[DEBUG] env.REDIS_URL =", env.REDIS_URL);
 
