@@ -1,32 +1,37 @@
-# Use official Bun runtime as base image
-FROM oven/bun:1 AS base
+# Stage 1: Build the application
+FROM oven/bun:1 AS builder
 
-# Set working directory inside the container
 WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y wget && \
     rm -rf /var/lib/apt/lists/*
 
-# Stage 1: Install dependencies
-FROM base AS install
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
-
-# Stage 2: Build / Prepare release
-FROM base AS release
-COPY --from=install /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma Client if Prisma schema exists
 RUN if [ -f "./prisma/schema.prisma" ]; then bunx prisma generate; fi
 
-# Set environment variables
+# Compile TypeScript using Bun
+RUN bun run build
+
+# Stage 2: Production runner
+FROM node:22-slim AS runner
+
+WORKDIR /app
+
 ENV NODE_ENV=production
 ENV PORT=8000
 
-# Expose backend port
+# Copy necessary production artifacts
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+
 EXPOSE 8000
 
-# Command to run the application
-CMD ["bun", "run", "src/server.ts"]
+# Command to run the application using Node.js
+CMD ["node", "dist/server.js"]

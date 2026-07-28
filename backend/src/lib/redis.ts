@@ -1,17 +1,21 @@
+// 
 import { Redis } from "ioredis";
 import { env } from "../config/env.js";
-import { logger } from "./logger.js";
 
-export const redis = new Redis(env.REDIS_URL.trim(), {
-  maxRetriesPerRequest: null,
-  lazyConnect: true,
+const url = new URL(env.REDIS_URL);
+
+console.log({
+  host: url.hostname,
+  port: url.port,
+  username: url.username,
+  password: url.password,
 });
 
-redis.on("connect", () => {
-  logger.info("Redis connected successfully");
+export const redis = new Redis({
+  host: url.hostname,
+  port: Number(url.port),
+  username: url.username,
+  password: url.password,
 });
 
-redis.on("error", (err) => {
-  logger.error({ err }, "Redis connection error");
-});
-
+await redis.ping();
