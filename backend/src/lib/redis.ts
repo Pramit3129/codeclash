@@ -1,20 +1,23 @@
-import { Redis } from "ioredis";
-import { env } from "../config/env.js";
+import Redis from "ioredis";
+import { env } from "../config/env.ts";
 
-const url = new URL(env.REDIS_URL);
-
-console.log({
-  host: url.hostname,
-  port: url.port,
-  username: url.username,
-  password: url.password,
+export const redis = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: true,
 });
 
-export const redis = new Redis({
-  host: url.hostname,
-  port: Number(url.port),
-  username: url.username,
-  password: url.password,
+redis.on("connect", () => {
+  console.log("✅ Redis connected");
 });
 
-await redis.ping();
+redis.on("ready", () => {
+  console.log("✅ Redis ready");
+});
+
+redis.on("error", (err) => {
+  console.error("❌ Redis error:", err);
+});
+
+export async function connectRedis() {
+  await redis.ping();
+}

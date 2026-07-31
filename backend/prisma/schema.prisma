@@ -5,3 +5,66 @@ datasource db {
   provider = "postgresql"
   url = env("DATABASE_URL")
 }
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+
+  id String @id @default(cuid())
+
+  googleId String @unique
+
+  email String @unique
+
+  name String
+
+  picture String?
+
+  role UserRole @default(USER)
+
+  sessions Session[]
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+}
+
+model Session {
+
+  id String @id @default(cuid())
+
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash String
+
+  previousRefreshTokenHash String?
+
+  tokenVersion Int @default(1)
+
+  expiresAt DateTime
+
+  lastUsedAt DateTime @default(now())
+
+  rotatedAt DateTime?
+
+  ipAddress String?
+
+  userAgent String?
+
+  deviceName String?
+
+  isRevoked Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@index([refreshTokenHash])
+
+  @@index([userId])
+}
