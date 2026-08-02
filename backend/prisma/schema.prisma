@@ -1,9 +1,10 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -11,60 +12,103 @@ enum UserRole {
   ADMIN
 }
 
-model User {
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  GITHUB
+}
 
+model User {
   id String @id @default(cuid())
 
-  googleId String @unique
+  // Unique handle used for login / mentions. Auto-generated for OAuth signups.
+  username String @unique
 
-  email String @unique
+  // Human friendly name shown in UI.
+  displayName String
 
-  name String
-
-  picture String?
+  avatar String?
 
   role UserRole @default(USER)
 
+  accounts AuthAccount[]
   sessions Session[]
 
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
+
+  @@index([username])
 }
 
-model Session {
-
+// A single authentication method attached to a user.
+// A user may have one LOCAL, one GOOGLE and one GITHUB account linked together.
+model AuthAccount {
   id String @id @default(cuid())
 
   userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider AuthProvider
 
-  refreshTokenHash String
+  // Provider specific stable identifier.
+  //  - LOCAL  -> normalized (lowercased) email
+  //  - GOOGLE -> Google "sub"
+  //  - GITHUB -> GitHub numeric user id (as string)
+  providerUserId String
 
+  email         String?
+  emailVerified Boolean @default(false)
+
+  // LOCAL only. bcrypt hash.
+  passwordHash String?
+
+  // OAuth provider tokens (encrypted with AES-256-GCM). GitHub only in practice.
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+
+  // Granted OAuth scopes.
+  scopes String[] @default([])
+
+  // Provider access-token expiry.
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@index([userId])
+  @@index([email])
+}
+
+// A long-lived refresh session. The raw refresh token is never stored, only its
+// SHA-256 hash. Supports rotation with reuse (theft) detection.
+model Session {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash         String
   previousRefreshTokenHash String?
 
+  // Bumped on every rotation. Embedded in issued access tokens so a rotated /
+  // revoked session immediately invalidates outstanding access tokens on refresh.
   tokenVersion Int @default(1)
 
-  expiresAt DateTime
+  expiresAt  DateTime
+  lastUsedAt DateTime  @default(now())
+  rotatedAt  DateTime?
 
-  lastUsedAt DateTime @default(now())
-
-  rotatedAt DateTime?
-
-  ipAddress String?
-
-  userAgent String?
-
+  ipAddress  String?
+  userAgent  String?
   deviceName String?
 
   isRevoked Boolean @default(false)
 
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
 
   @@index([refreshTokenHash])
-
   @@index([userId])
 }
