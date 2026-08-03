@@ -248,18 +248,39 @@ Revoke a specific session (must belong to the caller). `200 { "success": true }`
 ### POST `/password`  · Bearer
 
 Set a password for the first time (OAuth-only users) or change an existing one.
-On success **all other sessions are revoked**.
+On success **all other sessions are revoked** (`revokeAllSessions` except the
+current one).
 
 **Request**
 
 ```json
-{ "newPassword": "NewPass123", "currentPassword": "OldPass123" }
+{ "newPassword": "NewPass123", "currentPassword": "OldPass123", "email": "me@example.com" }
 ```
 
-`currentPassword` is required only when a LOCAL password already exists.
+Field rules (`changePasswordSchema` → `setLocalPassword`):
 
-**Response `200`** → `{ "success": true }`. Errors: `400` current password
-required, `401` current password incorrect, `422` validation.
+- **`newPassword`** — required; same policy as registration (8–72 chars, upper +
+  lower + digit).
+- **`currentPassword`** — required **only** when a LOCAL password already exists;
+  verified with bcrypt before the change.
+- **`email`** — optional; used **only** on first-time password setup and only
+  when the account has **no email on file** (e.g. a GitHub signup whose primary
+  email stayed private). Resolution order for the new LOCAL account's identifier:
+
+  1. an email already present on any of the user's accounts (reused, and its
+     `emailVerified` flag is inherited), else
+  2. the `email` supplied in this request (stored **`emailVerified: false`** — a
+     freshly typed address is unproven and will **not** auto-link a later OAuth
+     login), else
+  3. `400 { needsEmail: true }` — nothing to associate the password with.
+
+  A supplied email that already backs **another user's** LOCAL login is rejected
+  with `409`.
+
+**Response `200`** → `{ "success": true }`. Errors: `400` "Current password is
+required" / "An email is required to enable password login" (`{ needsEmail: true }`),
+`401` current password incorrect, `409` email already used by another account,
+`422` validation.
 
 ---
 
@@ -270,6 +291,16 @@ login method.
 
 `200 { "success": true }`; `403 "Cannot unlink your only login method"`;
 `404 "No such linked account"`.
+
+---
+
+### DELETE `/account`  · Bearer
+
+**Permanently** delete the authenticated user. Cascades to all `AuthAccount`
+and `Session` rows (`onDelete: Cascade`) and clears the `cc_rt` cookie.
+Irreversible — the frontend gates it behind a typed-username confirmation.
+
+`200 { "success": true }`; `404 "User not found"` if already deleted.
 
 ---
 
@@ -290,39 +321,80 @@ Client ── POST /api/auth/refresh ────────────▶ acc
 Key points:
 - **`state` is single-use** (stored in Redis, deleted on callback) → replay-safe.
 - **Google uses PKCE (S256)**; GitHub relies on `state` for CSRF.
-- If the caller is **already authenticated** when hitting `/github`, the flow
-  runs in **link mode** and attaches GitHub to the current user instead of
-  logging in / creating a user.
-- Accounts sharing a **verified** email auto-link to a single user.
 - The refresh token is delivered only via the httpOnly cookie — **no token ever
   appears in a URL**.
+
+#### Link mode (how the start route knows the user)
+
+`/google` and `/github` run under `optionalAuthenticate` and choose **link** vs
+**login** mode in `startOAuth`:
+
+1. If an `Authorization: Bearer` access token is present → use `req.auth.userId`.
+2. Otherwise fall back to the **`cc_rt` refresh cookie**, resolving the owning
+   user via `sessionService.resolveSessionUser(rawToken)` (validates the session
+   is not revoked/expired and the token hash matches — no rotation).
+
+The cookie fallback exists because a "Connect account" click is a **top-level
+browser navigation**, which cannot carry an `Authorization` header. If a user is
+resolved, `mode = "link"` and `linkUserId` is stored in the state; the callback
+then calls `linkOAuthAccount(linkUserId, profile)` instead of logging in.
+
+A failed link (e.g. that provider identity is already attached to a **different**
+user) redirects back to the frontend with `?status=error` rather than returning
+a JSON `409`, since the callback is a browser navigation.
+
+#### Provider email is required for linking
+
+Linking is driven entirely by **email equality**, so a provider that returns no
+email produces an isolated, unlinkable account.
+
+- **Google** asserts `email_verified`.
+- **GitHub**: `getGithubProfile` reads `/user`, and if that email is null falls
+  back to `/user/emails` for the primary **verified** address. This requires the
+  app to be allowed to read email:
+  - **OAuth App** → the `user:email` scope. `buildGithubAuthUrl` always merges
+    `read:user` + `user:email` into `GITHUB_SCOPES` (`REQUIRED_SCOPES`) so a
+    misconfigured env can't drop them.
+  - **GitHub App** (what this project uses) → the scope string is ignored;
+    instead the app's **Account permission → "Email addresses" → Read-only** must
+    be granted, and existing installs must **re-authorize** for it to take effect.
+  - If GitHub still returns no email, `getGithubProfile` logs a `warn` with the
+    granted scopes.
 
 #### Account linking rules
 
 Google and GitHub are trusted providers: any email they return is stored with
-`emailVerified: true`. Linking is driven by email equality:
+`emailVerified: true` (`providerTokenData` sets `emailVerified: profile.email ?
+true : false` for every OAuth write, including token refreshes). Linking:
 
-- **OAuth login, email already on a user** (LOCAL or another provider) → the new
-  provider is attached to that existing user (`resolveOAuthLogin` step 2). The
-  existing account no longer has to be pre-verified — the incoming OAuth email is
-  the proof of ownership.
-- **`register` (email + password) where that email already belongs to a trusted
-  OAuth user** → a `LOCAL` account is attached to that same user (they get a
-  password login), rather than creating a duplicate account.
+- **OAuth login (`resolveOAuthLogin`)**
+  1. Exact provider identity (`provider` + `providerUserId`) already exists →
+     refresh its tokens/email and return that user.
+  2. Else, if the profile email is present, find **any** account with the same
+     `email` (LOCAL or another provider) and attach this provider to that user.
+     The existing account need **not** be pre-verified — the incoming OAuth email
+     (verified) is the proof of ownership.
+  3. Else create a brand-new user + account.
+- **`register` (email + password), `registerLocal`**
+  1. A LOCAL account for this email already exists → `409`.
+  2. Else, a trusted OAuth account (`GOOGLE`/`GITHUB`) owns this **`emailVerified:
+     true`** email → attach a new LOCAL account (password) to that same user
+     (unless they already have a LOCAL account → `409`).
+  3. Else create a brand-new user with a LOCAL account (`emailVerified: false`).
 
 > ⚠️ **Account-takeover caveat.** Because this project has **no email-verification
 > step for LOCAL signups**, `register` trusts whoever submits the password. Someone
-> who knows a GitHub/Google user's email can register a password and thereby gain
-> access to that account. This is an accepted trade-off for now; before production,
-> gate the register-into-existing-OAuth-user path behind a verification email (send
-> a confirm link instead of immediately attaching + issuing a session).
+> who knows a GitHub/Google user's verified email can register a password and thereby
+> gain access to that account. This is an accepted trade-off for now; before
+> production, gate the register-into-existing-OAuth-user path behind a verification
+> email (send a confirm link instead of immediately attaching + issuing a session).
 
 ### Start
 
 ```
 GET /api/auth/github            # login mode
 GET /api/auth/github?returnTo=/dashboard
-GET /api/auth/github            # with a valid Bearer token → link mode
+GET /api/auth/github            # signed in (Bearer OR cc_rt cookie) → link mode
 ```
 
 **Response `302`**
@@ -336,7 +408,10 @@ Location: https://github.com/login/oauth/authorize
   &allow_signup=true
 ```
 
-Scopes come from `GITHUB_SCOPES` (default `read:user user:email repo`).
+Scopes come from `GITHUB_SCOPES` (default `read:user user:email repo`), with
+`read:user` + `user:email` always merged in. **Note:** for a GitHub *App* the
+`scope` param is ignored — email/repo access comes from the app's configured
+permissions, not this string (see "Provider email is required for linking").
 
 ### Callback
 

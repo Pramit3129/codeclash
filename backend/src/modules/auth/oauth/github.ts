@@ -8,9 +8,7 @@ const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const USER_URL = "https://api.github.com/user";
 const EMAILS_URL = "https://api.github.com/user/emails";
 
-// Scopes we must always request, whatever GITHUB_SCOPES is configured to.
-// `user:email` is required to read the (often private) primary email that
-// account-linking depends on — a misconfigured env must not be able to drop it.
+// Always requested (email is needed for account-linking), regardless of env.
 const REQUIRED_SCOPES = ["read:user", "user:email"];
 
 function githubScopes(): string {
@@ -19,8 +17,7 @@ function githubScopes(): string {
   return Array.from(merged).join(" ");
 }
 
-// GitHub does not implement PKCE, so the `state` (single-use, server-stored) is
-// the CSRF defense. We accept a challenge param for signature symmetry, unused.
+// GitHub has no PKCE; the single-use `state` is the CSRF defense.
 export function buildGithubAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: env.GITHUB_CLIENT_ID,
@@ -98,8 +95,7 @@ async function fetchUser(accessToken: string): Promise<GithubUser> {
   return (await res.json()) as GithubUser;
 }
 
-// The public profile may not expose an email, so resolve the primary verified
-// address explicitly (requires the `user:email` scope).
+// Resolve the primary verified email when the public profile hides it.
 async function fetchPrimaryEmail(
   accessToken: string,
 ): Promise<{ email: string | null; verified: boolean }> {
@@ -130,14 +126,12 @@ export async function getGithubProfile(code: string): Promise<OAuthProfile> {
     emailVerified = true;
   }
 
-  // No email means the account can't be linked to any other login method — the
-  // usual cause is a token granted without `user:email` (a stale authorization
-  // from before the scope was requested). Log the granted scopes to diagnose.
+  // No email -> account can't be linked. Usually a token without `user:email`
+  // (or, for a GitHub App, no "Email addresses" permission). Log to diagnose.
   if (!email) {
     logger.warn(
       { githubUserId: user.id, grantedScopes: tokens.scope ?? "" },
-      "GitHub OAuth returned no email — account linking will not work. " +
-        "Ensure the `user:email` scope is granted (re-authorize the app).",
+      "GitHub OAuth returned no email — account linking will not work.",
     );
   }
 

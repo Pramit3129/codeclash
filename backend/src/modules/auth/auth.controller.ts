@@ -160,6 +160,13 @@ export async function setPassword(req: Request, res: Response) {
   return res.status(200).json({ success: true });
 }
 
+// Permanently delete the authenticated user; clears the refresh cookie.
+export async function deleteAccount(req: Request, res: Response) {
+  await authService.deleteUserAccount(req.auth!.userId);
+  clearRefreshCookie(res);
+  return res.status(200).json({ success: true });
+}
+
 export async function unlink(req: Request, res: Response) {
   const provider = String(req.params.provider ?? "").toUpperCase();
   if (!provider || !["LOCAL", "GOOGLE", "GITHUB"].includes(provider)) {
@@ -178,9 +185,7 @@ export async function unlink(req: Request, res: Response) {
 // the current user instead of logging in.
 function startOAuth(provider: OAuthProvider) {
   return async (req: Request, res: Response) => {
-    // Prefer the Bearer identity (API-driven start); fall back to the httpOnly
-    // refresh cookie so a plain browser navigation from a signed-in user still
-    // enters "link" mode (a redirect can't carry an Authorization header).
+    // Bearer identity, or the refresh cookie (a redirect can't send a header).
     let linkUserId = req.auth?.userId;
     if (!linkUserId) {
       const rt = readRefreshCookie(req);
@@ -248,9 +253,7 @@ function handleOAuthCallback(provider: OAuthProvider) {
       try {
         await authService.linkOAuthAccount(state.linkUserId, profile);
       } catch {
-        // Linking can legitimately fail (e.g. this provider identity is already
-        // attached to another user). Surface it as an error redirect rather
-        // than a JSON 409, since this is a top-level browser navigation.
+        // e.g. already linked to another user — redirect, don't return JSON.
         return res.redirect(frontendRedirect(state.returnTo, false));
       }
       return res.redirect(frontendRedirect(state.returnTo, true));

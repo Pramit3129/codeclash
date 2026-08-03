@@ -143,10 +143,8 @@ export async function rotateRefreshToken(
   };
 }
 
-// Resolve the owning user of a raw refresh token without rotating it. Used by
-// the OAuth-start route to detect "link mode" during a top-level browser
-// navigation, where no Authorization header (Bearer access token) is present.
-// Returns null for any invalid / revoked / expired / mismatched token.
+// Resolve the owning user of a refresh token without rotating it (used for
+// OAuth link mode). Null on any invalid/revoked/expired/mismatched token.
 export async function resolveSessionUser(
   rawToken: string,
 ): Promise<{ userId: string; sessionId: string } | null> {

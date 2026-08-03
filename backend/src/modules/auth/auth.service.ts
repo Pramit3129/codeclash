@@ -17,7 +17,6 @@ import type { OAuthProfile } from "./oauth/types.js";
 export async function registerLocal(input: RegisterInput): Promise<User> {
   const email = input.email.toLowerCase();
 
-  // A LOCAL (password) login for this email already exists -> reject.
   const existingLocal = await prisma.authAccount.findUnique({
     where: {
       provider_providerUserId: { provider: "LOCAL", providerUserId: email },
@@ -30,11 +29,8 @@ export async function registerLocal(input: RegisterInput): Promise<User> {
 
   const passwordHash = await hashPassword(input.password);
 
-  // If a trusted OAuth (Google/GitHub) account already owns this verified
-  // email, attach the password login to that same user instead of spawning a
-  // duplicate account. NOTE: this trusts whoever knows the email — see the
-  // account-takeover caveat in docs/AUTH.md; a proper email-verification step
-  // should gate this in production.
+  // Attach the password login to an existing trusted-OAuth user with this
+  // verified email rather than duplicating (takeover caveat in docs/AUTH.md).
   const oauthMatch = await prisma.authAccount.findFirst({
     where: {
       email,
@@ -74,8 +70,7 @@ export async function registerLocal(input: RegisterInput): Promise<User> {
       ? input.username
       : await generateUniqueUsername(usernameSeed, tx);
 
-    // If an explicit username was requested, enforce uniqueness up-front for a
-    // clean error (the unique constraint is the ultimate guard).
+    // Check an explicit username up-front for a clean error.
     if (input.username) {
       const taken = await tx.user.findUnique({ where: { username } });
       if (taken) throw new ConflictError("Username is already taken");
@@ -115,7 +110,7 @@ export async function loginLocal(
     include: { user: true },
   });
 
-  // Constant-ish work + generic error to avoid user enumeration.
+  // Generic error to avoid user enumeration.
   if (!account?.passwordHash) {
     throw new UnauthorizedError("Invalid email or password");
   }
@@ -126,8 +121,7 @@ export async function loginLocal(
   return account.user;
 }
 
-// Add or change the LOCAL password for an already-authenticated user. This is
-// how OAuth-only users gain password login.
+// Add or change the LOCAL password for an authenticated user.
 export async function setLocalPassword(
   userId: string,
   newPassword: string,
@@ -142,9 +136,7 @@ export async function setLocalPassword(
 
   if (existing) {
     // Changing an existing password requires the current one.
-    if (!existing.passwordHash) {
-      // no-op safety
-    } else {
+    if (existing.passwordHash) {
       if (!currentPassword) {
         throw new BadRequestError("Current password is required");
       }
@@ -158,9 +150,7 @@ export async function setLocalPassword(
     return;
   }
 
-  // First-time password. Prefer an email already on file; otherwise accept one
-  // supplied by the caller (e.g. a GitHub signup whose email stayed private, so
-  // nothing was ever captured).
+  // First-time password: reuse an on-file email, else the caller-supplied one.
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { accounts: true },
@@ -175,7 +165,7 @@ export async function setLocalPassword(
     });
   }
 
-  // The email must not already back a LOCAL login on another user.
+  // Must not already back another user's LOCAL login.
   const emailTaken = await prisma.authAccount.findUnique({
     where: {
       provider_providerUserId: { provider: "LOCAL", providerUserId: localEmail },
@@ -188,8 +178,7 @@ export async function setLocalPassword(
     );
   }
 
-  // Only treat the email as verified if it matches an already-verified account
-  // on this user; an address the user just typed is unproven.
+  // A just-typed email is unproven; only inherit verification from a match.
   const emailVerified =
     onFileAccount?.email?.toLowerCase() === localEmail
       ? onFileAccount.emailVerified
@@ -209,15 +198,12 @@ export async function setLocalPassword(
 
 // ---------------- OAuth (Google / GitHub) ----------------
 
-// Persist provider-specific fields. Tokens are encrypted; we only bother for
-// GitHub (which we use for repo access) but the shape is generic.
+// Provider fields for an AuthAccount write. Tokens are encrypted (GitHub only).
 function providerTokenData(profile: OAuthProfile) {
   const persistTokens = profile.provider === "GITHUB";
   return {
     email: profile.email,
-    // Google and GitHub are trusted identity providers: an email they return
-    // (GitHub only surfaces verified primary emails, Google asserts
-    // email_verified) is treated as verified so it can be used for linking.
+    // Trusted providers: any email they return counts as verified (for linking).
     emailVerified: profile.email ? true : false,
     scopes: profile.scopes,
     expiresAt: profile.expiresAt,
@@ -259,10 +245,8 @@ export async function resolveOAuthLogin(
     return { user: existing.user, linked: false, created: false };
   }
 
-  // 2. Auto-link to an existing user that already owns this email. The incoming
-  //    OAuth email is trusted/verified (guarded below), so it's safe to attach
-  //    to a same-email account even if that account (e.g. a LOCAL signup) was
-  //    never itself email-verified. Prevents duplicate users.
+  // 2. Link to any existing user with this email (the verified OAuth email is
+  //    the proof), even if that account was never itself verified.
   if (profile.email && profile.emailVerified) {
     const emailMatch = await prisma.authAccount.findFirst({
       where: { email: profile.email },
@@ -364,6 +348,15 @@ export async function unlinkAccount(
     throw new ForbiddenError("Cannot unlink your only login method");
   }
   await prisma.authAccount.delete({ where: { id: target.id } });
+}
+
+// Permanently delete a user; cascades to accounts + sessions. Irreversible.
+export async function deleteUserAccount(userId: string): Promise<void> {
+  try {
+    await prisma.user.delete({ where: { id: userId } });
+  } catch {
+    throw new NotFoundError("User not found");
+  }
 }
 
 export async function listLinkedAccounts(userId: string) {

@@ -46,6 +46,7 @@ authRouter.delete(
   asyncHandler(ctrl.revokeSession),
 );
 authRouter.post("/password", authenticate, asyncHandler(ctrl.setPassword));
+authRouter.delete("/account", authenticate, asyncHandler(ctrl.deleteAccount));
 authRouter.delete(
   "/accounts/:provider",
   authenticate,
