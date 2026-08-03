@@ -11,6 +11,7 @@ import {
 } from "react";
 import { refreshAccessToken } from "./apiClient";
 import {
+  deleteAccount as apiDeleteAccount,
   getMe,
   login as apiLogin,
   logout as apiLogout,
@@ -29,6 +30,7 @@ interface AuthState {
     displayName?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   reload: () => Promise<boolean>;
 }
 
@@ -74,6 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       logout: async () => {
         await apiLogout();
+        setUser(null);
+      },
+      deleteAccount: async () => {
+        await apiDeleteAccount();
         setUser(null);
       },
       reload,

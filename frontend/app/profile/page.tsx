@@ -18,6 +18,7 @@ import {
   Plus,
   Shield,
   Smartphone,
+  Trash2,
   Unlink,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -152,7 +153,7 @@ export default function ProfilePage() {
 function ProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading, reload, logout } = useAuth();
+  const { user, loading, reload, logout, deleteAccount } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState<Provider | null>(null);
@@ -512,8 +513,120 @@ function ProfileContent() {
             <span>This page shows {sessions.length} of your active sessions.</span>
           </div>
         </section>
+
+        {/* Danger zone */}
+        <DangerZone
+          username={user.username}
+          onDelete={async () => {
+            await deleteAccount();
+            router.push("/");
+          }}
+        />
       </div>
     </div>
+  );
+}
+
+function DangerZone({
+  username,
+  onDelete,
+}: {
+  username: string;
+  onDelete: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const matches = confirm.trim() === username;
+
+  const handleDelete = async () => {
+    if (!matches) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onDelete();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Could not delete your account.",
+      );
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mt-6 rounded-3xl border border-danger/30 bg-danger/[0.03] shadow-soft p-6 sm:p-7">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight text-danger">
+            Delete account
+          </h2>
+          <p className="mt-1 text-xs text-ink-3">
+            Permanently remove your account, all linked providers, and every
+            session. This cannot be undone.
+          </p>
+        </div>
+        {!open && (
+          <button
+            onClick={() => setOpen(true)}
+            className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-danger/40 text-xs font-medium text-danger hover:bg-danger/10 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete account
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">
+              Type <span className="font-semibold text-danger">{username}</span>{" "}
+              to confirm
+            </label>
+            <input
+              type="text"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder={username}
+              autoComplete="off"
+              className="w-full h-11 px-3.5 rounded-xl border border-line bg-bg text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-danger focus:ring-2 focus:ring-danger/20 transition-colors"
+            />
+          </div>
+
+          {error && <p className="text-xs text-danger">{error}</p>}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDelete}
+              disabled={!matches || busy}
+              className="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-full bg-danger text-white text-sm font-semibold shadow-lifted hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {busy ? (
+                <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Permanently delete
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setConfirm("");
+                setError(null);
+                setOpen(false);
+              }}
+              disabled={busy}
+              className="h-10 px-4 rounded-full text-sm font-medium text-ink-2 hover:text-ink transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -111,3 +111,9 @@ export const setPassword = (
 
 export const unlinkAccount = (provider: Provider) =>
   apiJson(`/api/auth/accounts/${provider.toLowerCase()}`, { method: "DELETE" });
+
+// Permanently delete the current account. Clears the local token on success.
+export async function deleteAccount(): Promise<void> {
+  await apiJson("/api/auth/account", { method: "DELETE" });
+  tokenStore.clear();
+}
