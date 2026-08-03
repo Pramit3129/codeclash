@@ -132,6 +132,7 @@ export async function setLocalPassword(
   userId: string,
   newPassword: string,
   currentPassword?: string,
+  email?: string,
 ): Promise<void> {
   const existing = await prisma.authAccount.findUnique({
     where: { userId_provider: { userId, provider: "LOCAL" } },
@@ -157,27 +158,50 @@ export async function setLocalPassword(
     return;
   }
 
-  // First-time password: derive the LOCAL identifier from a known email.
+  // First-time password. Prefer an email already on file; otherwise accept one
+  // supplied by the caller (e.g. a GitHub signup whose email stayed private, so
+  // nothing was ever captured).
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { accounts: true },
   });
   if (!user) throw new NotFoundError("User not found");
 
-  const emailAccount = user.accounts.find((a) => a.email);
-  if (!emailAccount?.email) {
-    throw new BadRequestError(
-      "No email on file to associate with a password login",
+  const onFileAccount = user.accounts.find((a) => a.email) ?? null;
+  const localEmail = (email ?? onFileAccount?.email)?.toLowerCase() ?? null;
+  if (!localEmail) {
+    throw new BadRequestError("An email is required to enable password login", {
+      needsEmail: true,
+    });
+  }
+
+  // The email must not already back a LOCAL login on another user.
+  const emailTaken = await prisma.authAccount.findUnique({
+    where: {
+      provider_providerUserId: { provider: "LOCAL", providerUserId: localEmail },
+    },
+    select: { userId: true },
+  });
+  if (emailTaken && emailTaken.userId !== userId) {
+    throw new ConflictError(
+      "That email is already used by another account's password login",
     );
   }
+
+  // Only treat the email as verified if it matches an already-verified account
+  // on this user; an address the user just typed is unproven.
+  const emailVerified =
+    onFileAccount?.email?.toLowerCase() === localEmail
+      ? onFileAccount.emailVerified
+      : false;
 
   await prisma.authAccount.create({
     data: {
       userId,
       provider: "LOCAL",
-      providerUserId: emailAccount.email,
-      email: emailAccount.email,
-      emailVerified: emailAccount.emailVerified,
+      providerUserId: localEmail,
+      email: localEmail,
+      emailVerified,
       passwordHash,
     },
   });

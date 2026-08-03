@@ -146,11 +146,14 @@ export async function revokeSession(req: Request, res: Response) {
 }
 
 export async function setPassword(req: Request, res: Response) {
-  const { newPassword, currentPassword } = changePasswordSchema.parse(req.body);
+  const { newPassword, currentPassword, email } = changePasswordSchema.parse(
+    req.body,
+  );
   await authService.setLocalPassword(
     req.auth!.userId,
     newPassword,
     currentPassword,
+    email,
   );
   // Password change invalidates other sessions for safety.
   await sessionService.revokeAllSessions(req.auth!.userId, req.auth!.sessionId);

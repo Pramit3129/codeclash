@@ -41,6 +41,9 @@ export const loginSchema = z.object({
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).optional(),
   newPassword: passwordSchema,
+  // Optional email, used only when enabling password login on an account that
+  // has no email on file (e.g. a GitHub signup whose email stayed private).
+  email: emailSchema.optional(),
 });
 
 export const setPasswordSchema = z.object({
