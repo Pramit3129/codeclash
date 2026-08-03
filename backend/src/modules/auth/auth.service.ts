@@ -17,13 +17,53 @@ import type { OAuthProfile } from "./oauth/types.js";
 export async function registerLocal(input: RegisterInput): Promise<User> {
   const email = input.email.toLowerCase();
 
-  // check for exisitng user with the same email
-  const existing = await prisma.authAccount.findFirst({
-    where: { email },
+  // A LOCAL (password) login for this email already exists -> reject.
+  const existingLocal = await prisma.authAccount.findUnique({
+    where: {
+      provider_providerUserId: { provider: "LOCAL", providerUserId: email },
+    },
     select: { id: true },
   });
-  if (existing) {
+  if (existingLocal) {
     throw new ConflictError("An account with this email already exists");
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  // If a trusted OAuth (Google/GitHub) account already owns this verified
+  // email, attach the password login to that same user instead of spawning a
+  // duplicate account. NOTE: this trusts whoever knows the email — see the
+  // account-takeover caveat in docs/AUTH.md; a proper email-verification step
+  // should gate this in production.
+  const oauthMatch = await prisma.authAccount.findFirst({
+    where: {
+      email,
+      emailVerified: true,
+      provider: { in: ["GOOGLE", "GITHUB"] },
+    },
+    include: { user: true },
+  });
+  if (oauthMatch) {
+    const hasLocal = await prisma.authAccount.findUnique({
+      where: {
+        userId_provider: { userId: oauthMatch.userId, provider: "LOCAL" },
+      },
+      select: { id: true },
+    });
+    if (hasLocal) {
+      throw new ConflictError("An account with this email already exists");
+    }
+    await prisma.authAccount.create({
+      data: {
+        userId: oauthMatch.userId,
+        provider: "LOCAL",
+        providerUserId: email,
+        email,
+        emailVerified: oauthMatch.emailVerified,
+        passwordHash,
+      },
+    });
+    return oauthMatch.user;
   }
 
   const usernameSeed =
@@ -40,8 +80,6 @@ export async function registerLocal(input: RegisterInput): Promise<User> {
       const taken = await tx.user.findUnique({ where: { username } });
       if (taken) throw new ConflictError("Username is already taken");
     }
-
-    const passwordHash = await hashPassword(input.password);
 
     const user = await tx.user.create({
       data: {
@@ -153,7 +191,10 @@ function providerTokenData(profile: OAuthProfile) {
   const persistTokens = profile.provider === "GITHUB";
   return {
     email: profile.email,
-    emailVerified: profile.emailVerified,
+    // Google and GitHub are trusted identity providers: an email they return
+    // (GitHub only surfaces verified primary emails, Google asserts
+    // email_verified) is treated as verified so it can be used for linking.
+    emailVerified: profile.email ? true : false,
     scopes: profile.scopes,
     expiresAt: profile.expiresAt,
     encryptedAccessToken: persistTokens
@@ -194,11 +235,13 @@ export async function resolveOAuthLogin(
     return { user: existing.user, linked: false, created: false };
   }
 
-  // 2. Auto-link to an existing user when the provider email is verified and
-  //    already belongs to another (verified) account. Prevents duplicate users.
+  // 2. Auto-link to an existing user that already owns this email. The incoming
+  //    OAuth email is trusted/verified (guarded below), so it's safe to attach
+  //    to a same-email account even if that account (e.g. a LOCAL signup) was
+  //    never itself email-verified. Prevents duplicate users.
   if (profile.email && profile.emailVerified) {
     const emailMatch = await prisma.authAccount.findFirst({
-      where: { email: profile.email, emailVerified: true },
+      where: { email: profile.email },
       include: { user: true },
     });
     if (emailMatch) {

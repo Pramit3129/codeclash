@@ -175,7 +175,19 @@ export async function unlink(req: Request, res: Response) {
 // the current user instead of logging in.
 function startOAuth(provider: OAuthProvider) {
   return async (req: Request, res: Response) => {
-    const mode = req.auth ? "link" : "login";
+    // Prefer the Bearer identity (API-driven start); fall back to the httpOnly
+    // refresh cookie so a plain browser navigation from a signed-in user still
+    // enters "link" mode (a redirect can't carry an Authorization header).
+    let linkUserId = req.auth?.userId;
+    if (!linkUserId) {
+      const rt = readRefreshCookie(req);
+      if (rt) {
+        const resolved = await sessionService.resolveSessionUser(rt);
+        linkUserId = resolved?.userId;
+      }
+    }
+
+    const mode = linkUserId ? "link" : "login";
     const { verifier, challenge } = createPkcePair();
     const returnTo =
       typeof req.query.returnTo === "string" ? req.query.returnTo : undefined;
@@ -184,7 +196,7 @@ function startOAuth(provider: OAuthProvider) {
       provider,
       mode,
       codeVerifier: verifier,
-      linkUserId: req.auth?.userId,
+      linkUserId,
       returnTo,
     });
 
@@ -230,7 +242,14 @@ function handleOAuthCallback(provider: OAuthProvider) {
         : await getGithubProfile(code);
 
     if (state.mode === "link" && state.linkUserId) {
-      await authService.linkOAuthAccount(state.linkUserId, profile);
+      try {
+        await authService.linkOAuthAccount(state.linkUserId, profile);
+      } catch {
+        // Linking can legitimately fail (e.g. this provider identity is already
+        // attached to another user). Surface it as an error redirect rather
+        // than a JSON 409, since this is a top-level browser navigation.
+        return res.redirect(frontendRedirect(state.returnTo, false));
+      }
       return res.redirect(frontendRedirect(state.returnTo, true));
     }
 

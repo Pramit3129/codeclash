@@ -297,6 +297,26 @@ Key points:
 - The refresh token is delivered only via the httpOnly cookie — **no token ever
   appears in a URL**.
 
+#### Account linking rules
+
+Google and GitHub are trusted providers: any email they return is stored with
+`emailVerified: true`. Linking is driven by email equality:
+
+- **OAuth login, email already on a user** (LOCAL or another provider) → the new
+  provider is attached to that existing user (`resolveOAuthLogin` step 2). The
+  existing account no longer has to be pre-verified — the incoming OAuth email is
+  the proof of ownership.
+- **`register` (email + password) where that email already belongs to a trusted
+  OAuth user** → a `LOCAL` account is attached to that same user (they get a
+  password login), rather than creating a duplicate account.
+
+> ⚠️ **Account-takeover caveat.** Because this project has **no email-verification
+> step for LOCAL signups**, `register` trusts whoever submits the password. Someone
+> who knows a GitHub/Google user's email can register a password and thereby gain
+> access to that account. This is an accepted trade-off for now; before production,
+> gate the register-into-existing-OAuth-user path behind a verification email (send
+> a confirm link instead of immediately attaching + issuing a session).
+
 ### Start
 
 ```

@@ -143,6 +143,26 @@ export async function rotateRefreshToken(
   };
 }
 
+// Resolve the owning user of a raw refresh token without rotating it. Used by
+// the OAuth-start route to detect "link mode" during a top-level browser
+// navigation, where no Authorization header (Bearer access token) is present.
+// Returns null for any invalid / revoked / expired / mismatched token.
+export async function resolveSessionUser(
+  rawToken: string,
+): Promise<{ userId: string; sessionId: string } | null> {
+  const parsed = parseRefreshToken(rawToken);
+  if (!parsed) return null;
+
+  const session = await prisma.session.findUnique({
+    where: { id: parsed.sessionId },
+  });
+  if (!session || session.isRevoked) return null;
+  if (session.expiresAt.getTime() < Date.now()) return null;
+  if (!safeEqual(sha256(parsed.secret), session.refreshTokenHash)) return null;
+
+  return { userId: session.userId, sessionId: session.id };
+}
+
 // Revoke a single session (logout). Idempotent.
 export async function revokeSession(sessionId: string): Promise<void> {
   await prisma.session.updateMany({
