@@ -392,23 +392,28 @@ function ProfileContent() {
                 ) : (
                   <span className="text-xs text-ink-3">Unverified</span>
                 )}
-                <button
-                  onClick={() => handleUnlink(account.provider)}
-                  disabled={!canUnlink || unlinking === account.provider}
-                  title={
-                    canUnlink
-                      ? `Unlink ${providerLabel(account.provider)}`
-                      : "You can't unlink your only login method"
-                  }
-                  className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-danger hover:underline disabled:text-ink-3 disabled:no-underline disabled:cursor-not-allowed"
-                >
-                  {unlinking === account.provider ? (
-                    <span className="inline-block w-3.5 h-3.5 border-2 border-danger/30 border-t-danger rounded-full animate-spin" />
-                  ) : (
-                    <Unlink className="w-3.5 h-3.5" />
-                  )}
-                  Unlink
-                </button>
+                {canUnlink ? (
+                  <button
+                    onClick={() => handleUnlink(account.provider)}
+                    disabled={unlinking === account.provider}
+                    title={`Unlink ${providerLabel(account.provider)}`}
+                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-danger hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {unlinking === account.provider ? (
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-danger/30 border-t-danger rounded-full animate-spin" />
+                    ) : (
+                      <Unlink className="w-3.5 h-3.5" />
+                    )}
+                    Unlink
+                  </button>
+                ) : (
+                  <span
+                    title="This is your only way to sign in — add another before removing it."
+                    className="shrink-0 text-[11px] font-medium text-ink-3"
+                  >
+                    Only login
+                  </span>
+                )}
               </li>
             ))}
 
