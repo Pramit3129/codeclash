@@ -1,4 +1,5 @@
 import { env } from "../../../config/env.js";
+import { logger } from "../../../lib/logger.js";
 import { BadRequestError } from "../../../utils/errors.js";
 import type { OAuthProfile } from "./types.js";
 
@@ -7,13 +8,24 @@ const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const USER_URL = "https://api.github.com/user";
 const EMAILS_URL = "https://api.github.com/user/emails";
 
+// Scopes we must always request, whatever GITHUB_SCOPES is configured to.
+// `user:email` is required to read the (often private) primary email that
+// account-linking depends on — a misconfigured env must not be able to drop it.
+const REQUIRED_SCOPES = ["read:user", "user:email"];
+
+function githubScopes(): string {
+  const configured = env.GITHUB_SCOPES.split(/[\s,]+/).filter(Boolean);
+  const merged = new Set([...configured, ...REQUIRED_SCOPES]);
+  return Array.from(merged).join(" ");
+}
+
 // GitHub does not implement PKCE, so the `state` (single-use, server-stored) is
 // the CSRF defense. We accept a challenge param for signature symmetry, unused.
 export function buildGithubAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: env.GITHUB_CLIENT_ID,
     redirect_uri: env.GITHUB_REDIRECT_URI,
-    scope: env.GITHUB_SCOPES,
+    scope: githubScopes(),
     state,
     allow_signup: "true",
   });
@@ -116,6 +128,17 @@ export async function getGithubProfile(code: string): Promise<OAuthProfile> {
     emailVerified = primary.verified;
   } else {
     emailVerified = true;
+  }
+
+  // No email means the account can't be linked to any other login method — the
+  // usual cause is a token granted without `user:email` (a stale authorization
+  // from before the scope was requested). Log the granted scopes to diagnose.
+  if (!email) {
+    logger.warn(
+      { githubUserId: user.id, grantedScopes: tokens.scope ?? "" },
+      "GitHub OAuth returned no email — account linking will not work. " +
+        "Ensure the `user:email` scope is granted (re-authorize the app).",
+    );
   }
 
   return {
