@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -53,7 +54,7 @@ export default function RootLayout({
           aria-hidden
           className="pointer-events-none fixed inset-0 -z-10 bg-noise opacity-[0.035]"
         />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

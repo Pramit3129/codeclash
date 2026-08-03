@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   Mail,
@@ -11,6 +12,21 @@ import {
   EyeOff,
   CheckCircle2,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { ApiError } from "@/lib/auth/apiClient";
+import { API_URL } from "@/lib/auth/config";
+
+function isRecord(value: unknown): value is Record<string, string[]> {
+  return typeof value === "object" && value !== null;
+}
+
+function fieldErrorMessages(
+  fieldErrors: Record<string, string[]>,
+  field: string,
+): string[] {
+  const messages = fieldErrors[field];
+  return Array.isArray(messages) ? messages : [];
+}
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -23,6 +39,8 @@ export function AuthModal({
   onClose,
   initialMode = "login",
 }: AuthModalProps) {
+  const { login, register } = useAuth();
+  const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,16 +48,33 @@ export function AuthModal({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const clearError = () => {
+    setError(null);
+    setFieldErrors({});
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setSuccessMsg("");
+    clearError();
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      if (mode === "login") {
+        await login(email, password);
+      } else {
+        await register({
+          email,
+          password,
+          username: name,
+          displayName: name,
+        });
+      }
       setSuccessMsg(
         mode === "login"
           ? "You're signed in. Good luck out there."
@@ -47,14 +82,29 @@ export function AuthModal({
       );
       setTimeout(() => {
         setSuccessMsg("");
+        setEmail("");
+        setPassword("");
+        setName("");
         onClose();
+        router.push("/profile");
       }, 1100);
-    }, 800);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422 && isRecord(err.details)) {
+        setFieldErrors(err.details);
+        setError(null);
+      } else {
+        setFieldErrors({});
+        setError(
+          err instanceof ApiError ? err.message : "Something went wrong. Please try again."
+        );
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOAuth = (provider: "google" | "github") => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
-    window.location.href = `${backendUrl}/api/auth/${provider}`;
+    window.location.assign(`${API_URL}/api/auth/${provider}`);
   };
 
   return (
@@ -92,7 +142,10 @@ export function AuthModal({
         {/* Segmented control */}
         <div className="mt-6 grid grid-cols-2 rounded-xl bg-elevated p-1">
           <button
-            onClick={() => setMode("login")}
+            onClick={() => {
+              clearError();
+              setMode("login");
+            }}
             className={`h-9 rounded-md text-sm transition-colors ${
               mode === "login"
                 ? "bg-bg text-ink font-medium shadow-sm"
@@ -102,7 +155,10 @@ export function AuthModal({
             Log in
           </button>
           <button
-            onClick={() => setMode("signup")}
+            onClick={() => {
+              clearError();
+              setMode("signup");
+            }}
             className={`h-9 rounded-md text-sm transition-colors ${
               mode === "signup"
                 ? "bg-bg text-ink font-medium shadow-sm"
@@ -165,6 +221,13 @@ export function AuthModal({
           </div>
         )}
 
+        {error && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/5 px-4 py-2.5 text-sm text-danger">
+            <span className="mt-0.5 shrink-0">⚠</span>
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "signup" && (
@@ -182,11 +245,20 @@ export function AuthModal({
                   type="text"
                   required
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    clearError();
+                  }}
                   placeholder="alex_dev"
+                  aria-invalid={fieldErrorMessages(fieldErrors, "username").length > 0}
                   className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-line bg-surface text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
                 />
               </div>
+              {fieldErrorMessages(fieldErrors, "username").map((msg) => (
+                <p key={msg} className="mt-1.5 text-xs text-danger">
+                  {msg}
+                </p>
+              ))}
             </div>
           )}
 
@@ -199,17 +271,26 @@ export function AuthModal({
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-ink-3 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alex@example.com"
-                className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-line bg-surface text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
-              />
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearError();
+                  }}
+                  placeholder="alex@example.com"
+                  aria-invalid={fieldErrorMessages(fieldErrors, "email").length > 0}
+                  className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-line bg-surface text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
+                />
+              </div>
+              {fieldErrorMessages(fieldErrors, "email").map((msg) => (
+                <p key={msg} className="mt-1.5 text-xs text-danger">
+                  {msg}
+                </p>
+              ))}
             </div>
-          </div>
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -234,15 +315,19 @@ export function AuthModal({
             </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-ink-3 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full h-11 pl-10 pr-11 rounded-xl border border-line bg-surface text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
-              />
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearError();
+                  }}
+                  placeholder="••••••••"
+                  aria-invalid={fieldErrorMessages(fieldErrors, "password").length > 0}
+                  className="w-full h-11 pl-10 pr-11 rounded-xl border border-line bg-surface text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
+                />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -256,6 +341,11 @@ export function AuthModal({
                 )}
               </button>
             </div>
+            {fieldErrorMessages(fieldErrors, "password").map((msg) => (
+              <p key={msg} className="mt-1.5 text-xs text-danger">
+                {msg}
+              </p>
+            ))}
           </div>
 
           <button

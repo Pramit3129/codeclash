@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useSyncExternalStore } from "react";
-import { Menu, X } from "lucide-react";
+import Link from "next/link";
+import { Menu, X, LogOut } from "lucide-react";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const THEME_KEY = "codeclash-theme";
 
@@ -41,6 +43,13 @@ interface NavbarProps {
   onOpenAuth: (mode: "login" | "signup") => void;
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : ""))
+    .toUpperCase();
+}
+
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
   { label: "How it works", href: "#how-it-works" },
@@ -65,6 +74,7 @@ function MoonIcon({ className }: { className?: string }) {
 }
 
 export function Navbar({ onOpenAuth }: NavbarProps) {
+  const { user, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -162,19 +172,55 @@ export function Navbar({ onOpenAuth }: NavbarProps) {
               </span>
             </button>
 
-            <button
-              onClick={() => onOpenAuth("login")}
-              className="px-3 text-sm font-medium text-ink-2 hover:text-ink transition-colors"
-            >
-              Log in
-            </button>
+            {user ? (
+              <div className="flex items-center gap-2.5">
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-2.5"
+                  aria-label="View your profile"
+                >
+                  {user.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.avatar}
+                      alt={user.displayName || user.username}
+                      className="w-8 h-8 rounded-full ring-2 ring-accent/20 object-cover"
+                    />
+                  ) : (
+                    <span className="w-8 h-8 rounded-full bg-accent/12 border border-accent/15 text-accent text-[11px] font-semibold flex items-center justify-center">
+                      {getInitials(user.displayName || user.username)}
+                    </span>
+                  )}
+                  <span className="text-sm font-medium text-ink-2">
+                    {user.displayName || user.username}
+                  </span>
+                </Link>
+                <button
+                  onClick={() => logout()}
+                  aria-label="Log out"
+                  title="Log out"
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-elevated/70 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => onOpenAuth("login")}
+                  className="px-3 text-sm font-medium text-ink-2 hover:text-ink transition-colors"
+                >
+                  Log in
+                </button>
 
-            <button
-              onClick={() => onOpenAuth("signup")}
-              className="btn-shine h-9 px-4 rounded-full bg-accent text-accent-ink text-sm font-semibold shadow-soft inline-flex items-center hover:bg-accent-strong transition-colors"
-            >
-              Get started
-            </button>
+                <button
+                  onClick={() => onOpenAuth("signup")}
+                  className="btn-shine h-9 px-4 rounded-full bg-accent text-accent-ink text-sm font-semibold shadow-soft inline-flex items-center hover:bg-accent-strong transition-colors"
+                >
+                  Get started
+                </button>
+              </>
+            )}
           </div>
 
           {/* Mobile controls */}
@@ -221,24 +267,61 @@ export function Navbar({ onOpenAuth }: NavbarProps) {
             className="mobile-item flex gap-3 pt-5"
             style={{ animationDelay: `${NAV_LINKS.length * 45}ms` }}
           >
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenAuth("login");
-              }}
-              className="flex-1 h-11 rounded-full border border-line-strong text-sm font-medium text-ink"
-            >
-              Log in
-            </button>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenAuth("signup");
-              }}
-              className="flex-1 h-11 rounded-full bg-accent text-accent-ink text-sm font-semibold"
-            >
-              Get started
-            </button>
+            {user ? (
+              <>
+                <Link
+                  href="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex-1 flex items-center gap-3"
+                >
+                  {user.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.avatar}
+                      alt={user.displayName || user.username}
+                      className="w-9 h-9 rounded-full ring-2 ring-accent/20 object-cover"
+                    />
+                  ) : (
+                    <span className="w-9 h-9 rounded-full bg-accent/12 border border-accent/15 text-accent text-[11px] font-semibold flex items-center justify-center">
+                      {getInitials(user.displayName || user.username)}
+                    </span>
+                  )}
+                  <span className="text-sm font-medium text-ink">
+                    {user.displayName || user.username}
+                  </span>
+                </Link>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    logout();
+                  }}
+                  className="h-11 px-5 rounded-full border border-line-strong text-sm font-medium text-ink"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth("login");
+                  }}
+                  className="flex-1 h-11 rounded-full border border-line-strong text-sm font-medium text-ink"
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth("signup");
+                  }}
+                  className="flex-1 h-11 rounded-full bg-accent text-accent-ink text-sm font-semibold"
+                >
+                  Get started
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
