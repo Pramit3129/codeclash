@@ -19,19 +19,24 @@ app.set("trust proxy", 1);
 app.use(helmet());
 
 // Allow the configured frontend origin(s) with credentials so the httpOnly
-// refresh cookie is accepted cross-origin.
+// refresh cookie is accepted cross-origin. Origins are normalized (trailing
+// slashes stripped) so "https://app.example.com/" matches the browser's
+// "https://app.example.com".
 const allowedOrigins = (env.CORS_ORIGINS ?? env.FRONTEND_URL)
   .split(",")
-  .map((o) => o.trim())
+  .map((o) => o.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
 app.use(
   cors({
     origin(origin, callback) {
       // Allow non-browser clients (no Origin) and configured origins.
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin) return callback(null, true);
+      const normalized = origin.replace(/\/+$/, "");
+      if (allowedOrigins.includes(normalized)) {
         return callback(null, true);
       }
+      console.log("CORS blocked origin:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
