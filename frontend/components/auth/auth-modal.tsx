@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { ApiError } from "@/lib/auth/apiClient";
-import { API_URL } from "@/lib/auth/config";
+import { startOAuth } from "@/lib/auth/authApi";
 
 function isRecord(value: unknown): value is Record<string, string[]> {
   return typeof value === "object" && value !== null;
@@ -104,7 +104,7 @@ export function AuthModal({
   };
 
   const handleOAuth = (provider: "google" | "github") => {
-    window.location.assign(`${API_URL}/api/auth/${provider}`);
+    startOAuth(provider);
   };
 
   return (

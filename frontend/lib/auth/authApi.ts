@@ -1,5 +1,21 @@
 import { apiJson } from "./apiClient";
 import { tokenStore } from "./tokenStore";
+import { API_URL } from "./config";
+
+export type OAuthProvider = "google" | "github";
+
+// Top-level browser navigation that starts an OAuth flow. When the user is
+// already signed in, the backend detects the refresh cookie and runs in "link"
+// mode, attaching the provider to the current account instead of logging in.
+export function startOAuth(
+  provider: OAuthProvider,
+  options: { returnTo?: string } = {},
+): void {
+  const params = options.returnTo
+    ? `?${new URLSearchParams({ returnTo: options.returnTo }).toString()}`
+    : "";
+  window.location.assign(`${API_URL}/api/auth/${provider}${params}`);
+}
 
 export interface User {
   id: string;
