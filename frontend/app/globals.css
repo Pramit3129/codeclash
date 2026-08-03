@@ -1,0 +1,531 @@
+@import "tailwindcss";
+
+/* ---------------------------------- *
+ *  CodeClash — Design System
+ *  Apple / Notion-inspired. Warm,
+ *  soft, layered, and precise.
+ * ---------------------------------- */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- Light (warm paper, Notion) ---- */
+:root {
+  --background: #faf9f6;
+  --surface: #ffffff;
+  --elevated: #f1f0ed;
+  --border: #e8e6e1;
+  --border-strong: #d6d4cd;
+
+  --ink: #23211d;
+  --ink-2: #6f6d66;
+  --ink-3: #a3a09a;
+
+  --accent: #b45309;
+  --accent-strong: #92400e;
+  --accent-ink: #ffffff;
+
+  --success: #2f8f52;
+  --success-soft: rgba(47, 143, 82, 0.12);
+  --danger: #cf3f3f;
+
+  --glow: rgba(180, 83, 9, 0.14);
+
+  --grad-text: linear-gradient(
+    110deg,
+    #b45309,
+    #e08c0e,
+    #b45309
+  );
+
+  --sh-soft: 0 1px 2px 0 rgb(35 33 29 / 0.04),
+    0 12px 28px -12px rgb(35 33 29 / 0.12);
+  --sh-lifted: 0 2px 6px 0 rgb(35 33 29 / 0.05),
+    0 28px 56px -20px rgb(35 33 29 / 0.22);
+  --sh-modal: 0 24px 64px -16px rgb(35 33 29 / 0.26);
+}
+
+/* ---- Dark (cool near-black, Apple) ---- */
+.dark {
+  --background: #0a0a0d;
+  --surface: #121216;
+  --elevated: #1a1a20;
+  --border: #26262d;
+  --border-strong: #36363f;
+
+  --ink: #f5f5f7;
+  --ink-2: #a2a2ab;
+  --ink-3: #686870;
+
+  --accent: #f0a01a;
+  --accent-strong: #ffb94d;
+  --accent-ink: #1c1404;
+
+  --success: #4cc27e;
+  --success-soft: rgba(76, 194, 126, 0.14);
+  --danger: #f27070;
+
+  --glow: rgba(240, 160, 26, 0.2);
+
+  --grad-text: linear-gradient(
+    110deg,
+    #f0a01a,
+    #ffd37a,
+    #f0a01a
+  );
+
+  --sh-soft: 0 1px 2px 0 rgb(0 0 0 / 0.4),
+    0 12px 32px -12px rgb(0 0 0 / 0.6);
+  --sh-lifted: 0 2px 8px 0 rgb(0 0 0 / 0.45),
+    0 32px 64px -20px rgb(0 0 0 / 0.72);
+  --sh-modal: 0 32px 80px -20px rgb(0 0 0 / 0.8);
+}
+
+@theme inline {
+  --color-bg: var(--background);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+
+  --shadow-soft: var(--sh-soft);
+  --shadow-lifted: var(--sh-lifted);
+  --shadow-modal: var(--sh-modal);
+
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), "SF Mono", SFMono-Regular, Menlo,
+    Monaco, Consolas, monospace;
+  --font-display: var(--font-instrument-serif), Georgia, "Times New Roman",
+    serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 96px;
+}
+
+body {
+  background-color: var(--background);
+  background-image: radial-gradient(
+      1100px 700px at 85% -12%,
+      var(--glow),
+      transparent 62%
+    ),
+    radial-gradient(
+      900px 600px at -8% 108%,
+      color-mix(in oklab, var(--accent) 5%, transparent),
+      transparent 60%
+    );
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Focus visibility — Apple-grade rings */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background-color: var(--glow);
+  color: var(--ink);
+}
+
+/* Subtle film-grain texture */
+.bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+/* Ambient radial glow helper */
+.glow-accent {
+  background: radial-gradient(
+    ellipse at center,
+    var(--glow) 0%,
+    transparent 65%
+  );
+  filter: blur(56px);
+}
+
+/* Editor scrim — always dark, like a real IDE */
+.editor-dark {
+  background-color: #0b0c0f;
+}
+
+/* Entrance animation */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------------------------------- *
+ *  Energy & micro-interactions
+ * ---------------------------------- */
+
+/* Slow-rotating aurora for the hero */
+@keyframes aurora-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.aurora {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--glow) 18%,
+    transparent 38%,
+    color-mix(in oklab, var(--accent) 10%, transparent) 55%,
+    transparent 72%,
+    var(--glow) 88%,
+    transparent 100%
+  );
+  filter: blur(72px);
+  animation: aurora-spin 44s linear infinite;
+}
+
+/* Energized gradient headline text */
+.text-energized {
+  background: var(--grad-text);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shine-text 6s linear infinite;
+}
+@keyframes shine-text {
+  to {
+    background-position: 200% center;
+  }
+}
+
+/* Faint arena grid backdrop */
+.bg-grid-faint {
+  background-image: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--ink) 5%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--ink) 5%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 56px 56px;
+  mask-image: radial-gradient(
+    ellipse 75% 65% at 50% 28%,
+    black 30%,
+    transparent 75%
+  );
+}
+
+/* Card cursor-follow spotlight */
+.spotlight-card {
+  position: relative;
+  overflow: hidden;
+}
+.spotlight-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    var(--glow),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.spotlight-card:hover::before {
+  opacity: 1;
+}
+.spotlight-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Button shine sweep */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -160%;
+  width: 55%;
+  z-index: 1;
+  transform: skewX(-22deg);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+  transition: left 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.btn-shine:hover::after {
+  left: 170%;
+}
+
+/* Blinking IDE cursor */
+@keyframes blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+}
+.cursor-blink {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: blink 1.1s steps(1) infinite;
+}
+
+/* Progress bar fill-up */
+@keyframes grow-bar {
+  from {
+    width: 0;
+  }
+}
+.grow-bar {
+  animation: grow-bar 1.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* League rating bars — grow in as the section reveals */
+.league-bar {
+  width: 0;
+}
+.is-visible .league-bar {
+  width: var(--bar-width, 0);
+  animation: grow-bar 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Gentle badge float (top-of-pedestal trophy) */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+/* Fine dot texture (white dots — reads on dark pedestals in both themes) */
+.bg-dot-pattern {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.5) 1px,
+    transparent 0
+  );
+  background-size: 14px 14px;
+}
+
+/* Pedestal rise-in — plinths grow up from the ground line when revealed */
+.plinth-grow {
+  transform-origin: bottom;
+}
+.reveal.is-visible .plinth-grow {
+  animation: plinth-rise 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes plinth-rise {
+  from {
+    transform: scaleY(0.04);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Scrolling marquee */
+.marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 14%,
+    black 86%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 14%,
+    black 86%,
+    transparent
+  );
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 30s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---------------------------------- *
+ *  Navbar — refined, editorial
+ * ---------------------------------- */
+
+/* Scroll progress — quiet accent thread */
+.nav-progress {
+  background: var(--accent);
+  opacity: 0.8;
+  transition: width 120ms linear;
+}
+
+/* Animated underline for nav links */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 2px;
+  border-radius: 9999px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s ease;
+}
+.nav-link:hover::after,
+.nav-link.nav-link-active::after {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+/* Theme toggle icon entrance */
+@keyframes icon-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.55) rotate(-24deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+.icon-pop {
+  display: inline-flex;
+  animation: icon-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Mobile drawer item stagger */
+.mobile-item {
+  animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Refined scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-fade-up,
+  .reveal,
+  .text-energized,
+  .aurora,
+  .marquee-track,
+  .icon-pop,
+  .mobile-item {
+    animation: none;
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .grow-bar {
+    animation: none;
+  }
+  .cursor-blink {
+    animation: none;
+  }
+  .animate-float {
+    animation: none;
+  }
+  .reveal.is-visible .plinth-grow {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
