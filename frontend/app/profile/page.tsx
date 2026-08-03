@@ -191,6 +191,8 @@ function ProfileContent() {
     [accounts],
   );
   const hasLocal = linkedProviders.has("LOCAL");
+  // Whether any linked account has an email we can reuse for password login.
+  const hasEmailOnFile = accounts.some((a) => !!a.email);
   // Refuse to let the user strip their last remaining way to sign in.
   const canUnlink = accounts.length > 1;
 
@@ -449,6 +451,7 @@ function ProfileContent() {
         {/* Password & security */}
         <PasswordSection
           hasLocal={hasLocal}
+          hasEmailOnFile={hasEmailOnFile}
           onDone={async () => {
             await refreshProfile();
           }}
@@ -516,23 +519,30 @@ function ProfileContent() {
 
 function PasswordSection({
   hasLocal,
+  hasEmailOnFile,
   onDone,
   onNotice,
 }: {
   hasLocal: boolean;
+  hasEmailOnFile: boolean;
   onDone: () => Promise<void>;
   onNotice: (n: { kind: "success" | "error"; text: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
 
+  // First-time password with no email captured from OAuth: ask for one.
+  const needsEmail = !hasLocal && !hasEmailOnFile;
+
   const reset = () => {
     setCurrentPassword("");
     setNewPassword("");
+    setEmail("");
     setFieldError(null);
     setShow(false);
   };
@@ -542,7 +552,10 @@ function PasswordSection({
     setBusy(true);
     setFieldError(null);
     try {
-      await setPassword(newPassword, hasLocal ? currentPassword : undefined);
+      await setPassword(newPassword, {
+        currentPassword: hasLocal ? currentPassword : undefined,
+        email: needsEmail ? email : undefined,
+      });
       onNotice({
         kind: "success",
         text: hasLocal
@@ -587,6 +600,26 @@ function PasswordSection({
 
       {open && (
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          {needsEmail && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">
+                Email
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full h-11 px-3.5 rounded-xl border border-line bg-bg text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
+              />
+              <p className="mt-1.5 text-xs text-ink-3">
+                Your GitHub sign-in didn&apos;t share an email, so add one to use
+                for password login.
+              </p>
+            </div>
+          )}
+
           {hasLocal && (
             <div>
               <label className="block text-sm font-medium text-ink mb-1.5">

@@ -96,10 +96,17 @@ export async function listSessions(): Promise<{ sessions: AuthSession[] }> {
 export const revokeSession = (id: string) =>
   apiJson(`/api/auth/sessions/${id}`, { method: "DELETE" });
 
-export const setPassword = (newPassword: string, currentPassword?: string) =>
+export const setPassword = (
+  newPassword: string,
+  options: { currentPassword?: string; email?: string } = {},
+) =>
   apiJson("/api/auth/password", {
     method: "POST",
-    body: JSON.stringify({ newPassword, currentPassword }),
+    body: JSON.stringify({
+      newPassword,
+      currentPassword: options.currentPassword,
+      email: options.email,
+    }),
   });
 
 export const unlinkAccount = (provider: Provider) =>
