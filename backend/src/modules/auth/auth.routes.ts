@@ -29,6 +29,12 @@ const oauthLimiter = rateLimit({
   max: 30,
 });
 
+const wsTicketLimiter = rateLimit({
+  prefix: "auth-ws-ticket",
+  windowSec: 60,
+  max: 5,
+});
+
 // ---- Local ----
 authRouter.post("/register", registerLimiter, asyncHandler(ctrl.register));
 authRouter.post("/login", loginLimiter, asyncHandler(ctrl.login));
@@ -74,5 +80,5 @@ authRouter.get(
 authRouter.get("/github/callback", asyncHandler(ctrl.githubCallback));
 
 // ----- ws-ticket routes -----
-authRouter.post("/issue-ws-ticket", authenticate, authorize('USER'), asyncHandler(ctrl.issueWsTicket));
+authRouter.post("/issue-ws-ticket", wsTicketLimiter, authenticate, authorize('USER'), asyncHandler(ctrl.issueWsTicket));
 
