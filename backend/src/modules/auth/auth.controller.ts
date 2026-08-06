@@ -28,6 +28,7 @@ import {
 } from "./oauth/state.js";
 import { buildGoogleAuthUrl, getGoogleProfile } from "./oauth/google.js";
 import { buildGithubAuthUrl, getGithubProfile } from "./oauth/github.js";
+import { issueTicket } from "./ws-ticket.service.js";
 
 function deviceFrom(req: Request): sessionService.DeviceInfo {
   return { ipAddress: getClientIp(req), userAgent: getUserAgent(req) };
@@ -271,3 +272,24 @@ function handleOAuthCallback(provider: OAuthProvider) {
 
 export const googleCallback = handleOAuthCallback("google");
 export const githubCallback = handleOAuthCallback("github");
+
+
+
+// ws-ticket controller
+
+export const issueWsTicket = async (req: Request, res: Response) => {
+    const { userId } = req.auth!;
+    const issuedToken = await issueTicket(userId.toString());
+    if(!issuedToken){
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while issuing ws-ticket"
+        });
+    }
+    return res.status(200).json({
+        success: true,
+        ticket: issuedToken.ticket,
+        TTL: issuedToken.TTL
+    });
+}
+    

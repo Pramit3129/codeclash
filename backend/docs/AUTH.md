@@ -83,6 +83,7 @@ on an expired access token, `{ "reason": "reuse" }` on refresh-token reuse).
 | DELETE | `/sessions/:id` | Bearer | – |
 | POST | `/password` | Bearer | – |
 | DELETE | `/accounts/:provider` | Bearer | – |
+| POST | `/issue-ws-ticket` | Bearer | – |
 | GET | `/google`, `/github` | optional | 30 / 5m / IP |
 | GET | `/google/callback`, `/github/callback` | – | – |
 
@@ -301,6 +302,30 @@ and `Session` rows (`onDelete: Cascade`) and clears the `cc_rt` cookie.
 Irreversible — the frontend gates it behind a typed-username confirmation.
 
 `200 { "success": true }`; `404 "User not found"` if already deleted.
+
+---
+
+### POST `/issue-ws-ticket`  · Bearer
+
+Issues a short-lived single-use ticket for authenticating WebSocket connections.
+Tickets are stored in Redis with a 2-minute TTL (`120000` ms) and invalidated upon validation.
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "ticket": "XcmDT261dT0lxDCYgOsthQ",
+  "TTL": "120000"
+}
+```
+
+Errors: `401 Unauthorized` (missing/invalid Bearer token), `500 Internal Server Error`.
+
+```bash
+curl -X POST http://localhost:8000/api/auth/issue-ws-ticket \
+  -H 'Authorization: Bearer <access_token>'
+```
 
 ---
 
@@ -721,6 +746,9 @@ export const setPassword = (newPassword: string, currentPassword?: string) =>
 
 export const unlinkAccount = (provider: "LOCAL" | "GOOGLE" | "GITHUB") =>
   apiJson(`/api/auth/accounts/${provider.toLowerCase()}`, { method: "DELETE" });
+
+export const issueWsTicket = () =>
+  apiJson<{ success: boolean; ticket: string; TTL: string }>("/api/auth/issue-ws-ticket", { method: "POST" });
 ```
 
 ### Step 4 — Auth context (bootstrap on load)

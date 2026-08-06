@@ -3,6 +3,7 @@ import * as ctrl from "./auth.controller.js";
 import { asyncHandler } from "../../utils/http.js";
 import { authenticate, optionalAuthenticate } from "../../middleware/authenticate.js";
 import { rateLimit } from "../../middleware/rateLimit.js";
+import { authorize } from "../../middleware/authorize.js";
 
 export const authRouter = Router();
 
@@ -71,3 +72,7 @@ authRouter.get(
   asyncHandler(ctrl.githubStart),
 );
 authRouter.get("/github/callback", asyncHandler(ctrl.githubCallback));
+
+// ----- ws-ticket routes -----
+authRouter.post("/issue-ws-ticket", authenticate, authorize('USER'), asyncHandler(ctrl.issueWsTicket));
+
