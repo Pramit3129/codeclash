@@ -80,5 +80,5 @@ authRouter.get(
 authRouter.get("/github/callback", asyncHandler(ctrl.githubCallback));
 
 // ----- ws-ticket routes -----
-authRouter.post("/issue-ws-ticket", wsTicketLimiter, authenticate, authorize('USER'), asyncHandler(ctrl.issueWsTicket));
+authRouter.post("/issue-ws-ticket", wsTicketLimiter, authenticate, authorize('USER', 'ADMIN'), asyncHandler(ctrl.issueWsTicket));
 

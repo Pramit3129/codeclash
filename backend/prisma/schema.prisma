@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -111,4 +110,37 @@ model Session {
 
   @@index([refreshTokenHash])
   @@index([userId])
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Problem {
+  id            String     @id @default(cuid())
+  slug          String     @unique
+  title         String
+  statementMd   String
+  difficulty    Difficulty
+  timeLimitMs   Int
+  memoryLimitMb Int
+  starterCode   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  testCases TestCase[]
+}
+
+model TestCase {
+  id             String  @id @default(cuid())
+  problemId      String
+  ordinal        Int
+  input          String
+  expectedOutput String
+  isSample       Boolean @default(false)
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
 }
