@@ -63,17 +63,17 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** A gutter-labelled payload row, e.g. `Input   2 3`. */
+/** A gutter-labelled payload row, e.g. `Input   2 3`. Sits inside an ExampleBlock card. */
 function IoRow({ label, text }: { label: string; text: string }) {
   return (
-    <div className="group relative flex items-start gap-3">
-      <span className="w-12 shrink-0 pt-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-3">
+    <div className="group relative flex items-start gap-3 px-4 py-3">
+      <span className="w-12 shrink-0 pt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-3">
         {label}
       </span>
-      <pre className="flex-1 min-w-0 rounded-lg bg-elevated/60 px-3.5 py-2.5 pr-10 font-mono text-[13px] leading-relaxed text-ink whitespace-pre-wrap break-words">
+      <pre className="flex-1 min-w-0 pr-8 font-mono text-[13px] leading-relaxed text-ink whitespace-pre-wrap break-words">
         {text.trim()}
       </pre>
-      <span className="absolute top-1.5 right-1.5 opacity-50 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      <span className="absolute top-2 right-2.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         <CopyButton text={text} />
       </span>
     </div>
@@ -83,10 +83,10 @@ function IoRow({ label, text }: { label: string; text: string }) {
 function ExampleBlock({ tc, index }: { tc: SampleTestCase; index: number }) {
   return (
     <div>
-      <div className="mb-2.5 text-[12px] font-medium text-ink-2">
+      <div className="mb-2.5 text-[13px] font-semibold text-ink">
         Example {index + 1}
       </div>
-      <div className="space-y-2">
+      <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-elevated/40">
         <IoRow label="Input" text={tc.input} />
         <IoRow label="Output" text={tc.expectedOutput} />
       </div>
