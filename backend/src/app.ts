@@ -8,7 +8,8 @@ import { rootRouter } from "./routes/root.route.js";
 import { healthRouter } from "./routes/health.route.js";
 import { readyRouter } from "./routes/ready.route.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
-import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { problemRouter } from "./modules/problems/problem.route.ts";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.ts";
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.use("/healthz", healthRouter);
 app.use("/health", healthRouter);
 app.use("/readyz", readyRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/problems", problemRouter);
 
 // 404 + centralized error handling (must be last).
 app.use(notFoundHandler);

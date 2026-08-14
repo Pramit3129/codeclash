@@ -26,6 +26,11 @@ export const fetchProblems = async (req: Request, res: Response) => {
         difficulty
     );
 
+    res.setHeader(
+        "Cache-Control",
+        "public, max-age=60"
+    );
+
     return res.status(200).json({
         success: true,
         problems,

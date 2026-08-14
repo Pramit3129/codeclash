@@ -5,7 +5,7 @@ import { authenticate } from '../../middleware/authenticate.js';
 import { authorize } from '../../middleware/authorize.js';
 import * as ctrl from './problem.controller.js'
 
-const problemRouter = express.Router();
+export const problemRouter = express.Router();
 
 // GET /api/problems?limit=3&cursor=P3
 problemRouter.get(

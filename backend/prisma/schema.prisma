@@ -127,7 +127,7 @@ model Problem {
   difficulty    Difficulty
   timeLimitMs   Int
   memoryLimitMb Int
-  starterCode   Json?
+  starterCode   Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
