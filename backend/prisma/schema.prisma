@@ -124,6 +124,7 @@ model Problem {
   slug          String     @unique
   title         String
   statementMd   String
+  constraintsMd String?
   difficulty    Difficulty
   timeLimitMs   Int
   memoryLimitMb Int

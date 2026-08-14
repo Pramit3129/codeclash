@@ -25,6 +25,7 @@ export const problemDetailSelect = {
   slug: true,
   title: true,
   statementMd: true,
+  constraintsMd: true,
   difficulty: true,
   timeLimitMs: true,
   memoryLimitMb: true,
@@ -58,6 +59,7 @@ export interface ProblemDetailType {
   slug: string;
   title: string;
   statementMd: string;
+  constraintsMd: string | null;
   difficulty: string;
   timeLimitMs: number;
   memoryLimitMb: number;
@@ -70,6 +72,7 @@ export interface problemDetailsResponse {
   slug: string;
   title: string;
   statementMd: string;
+  constraintsMd: string | null;
   difficulty: string;
   timeLimitMs: number;
   memoryLimitMb: number;

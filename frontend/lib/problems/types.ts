@@ -36,6 +36,7 @@ export interface ProblemDetails {
   slug: string;
   title: string;
   statementMd: string;
+  constraintsMd: string | null;
   difficulty: Difficulty;
   timeLimitMs: number;
   memoryLimitMb: number;

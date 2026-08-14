@@ -496,14 +496,15 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Statement subheads ("Input", "Output") share the page's section-label voice. */
 .problem-markdown h2 {
-  font-size: 1.1rem;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--ink);
-  margin-top: 1.75rem;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.375rem;
-  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
 }
 
 .problem-markdown h3 {
@@ -599,6 +600,45 @@ body {
   background: var(--elevated);
   font-weight: 600;
   color: var(--ink);
+}
+
+/* Resizable statement / editor split. */
+@media (min-width: 1024px) {
+  .split-left {
+    width: var(--left-w, 50%);
+    flex: 0 0 auto;
+  }
+}
+
+/* The statement's own H1 repeats the page title — hide it there only. */
+.problem-statement > h1:first-child {
+  display: none;
+}
+
+/* Constraints — a quoted spec block: hairline rule, monospaced rows. */
+.problem-constraints ul,
+.problem-constraints ol {
+  margin: 0;
+  padding-left: 1.15rem;
+  border-left: 1px solid var(--border);
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.problem-constraints li {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* Already monospaced by the row — drop the inline chip treatment. */
+.problem-constraints code {
+  background: transparent;
+  padding: 0;
+  font-size: 1em;
 }
 
 /* Refined scrollbar */

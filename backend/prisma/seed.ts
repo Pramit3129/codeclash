@@ -54,6 +54,7 @@ async function main() {
         slug: spec.slug,
         title: spec.title,
         statementMd: spec.statementMd,
+        constraintsMd: spec.constraintsMd,
         difficulty: spec.difficulty,
         timeLimitMs: spec.timeLimitMs,
         memoryLimitMb: spec.memoryLimitMb,
@@ -67,6 +68,7 @@ async function main() {
       update: {
         title: spec.title,
         statementMd: spec.statementMd,
+        constraintsMd: spec.constraintsMd,
         difficulty: spec.difficulty,
         timeLimitMs: spec.timeLimitMs,
         memoryLimitMb: spec.memoryLimitMb,

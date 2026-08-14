@@ -1,15 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
   AlertCircle,
   RefreshCw,
-  Clock,
-  HardDrive,
-  CheckCircle2,
   Copy,
   Check,
 } from "lucide-react";
@@ -28,6 +25,11 @@ interface PageState {
   error: string | null;
   codeByLanguage: Record<Language, string>;
 }
+
+/** How far the split can be dragged, as a percentage of the container. */
+const MIN_SPLIT = 28;
+const MAX_SPLIT = 72;
+const DEFAULT_SPLIT = 50;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -53,38 +55,52 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function TestCaseBlock({ tc, index }: { tc: SampleTestCase; index: number }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-line overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-elevated/50 border-b border-line">
-        <span className="text-xs font-semibold text-ink">
-          Example {index + 1}
-        </span>
+    <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3">
+      {children}
+    </h3>
+  );
+}
+
+/** A gutter-labelled payload row, e.g. `Input   2 3`. */
+function IoRow({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="group relative flex items-start gap-3">
+      <span className="w-12 shrink-0 pt-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-3">
+        {label}
+      </span>
+      <pre className="flex-1 min-w-0 rounded-lg bg-elevated/60 px-3.5 py-2.5 pr-10 font-mono text-[13px] leading-relaxed text-ink whitespace-pre-wrap break-words">
+        {text.trim()}
+      </pre>
+      <span className="absolute top-1.5 right-1.5 opacity-50 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <CopyButton text={text} />
+      </span>
+    </div>
+  );
+}
+
+function ExampleBlock({ tc, index }: { tc: SampleTestCase; index: number }) {
+  return (
+    <div>
+      <div className="mb-2.5 text-[12px] font-medium text-ink-2">
+        Example {index + 1}
       </div>
-      <div className="p-4 space-y-3">
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-              Input
-            </span>
-            <CopyButton text={tc.input} />
-          </div>
-          <pre className="text-[13px] text-ink font-mono whitespace-pre-wrap bg-bg rounded-md px-3 py-2 border border-line/50">
-            {tc.input.trim()}
-          </pre>
-        </div>
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-              Output
-            </span>
-            <CopyButton text={tc.expectedOutput} />
-          </div>
-          <pre className="text-[13px] text-ink font-mono whitespace-pre-wrap bg-bg rounded-md px-3 py-2 border border-line/50">
-            {tc.expectedOutput.trim()}
-          </pre>
-        </div>
+      <div className="space-y-2">
+        <IoRow label="Input" text={tc.input} />
+        <IoRow label="Output" text={tc.expectedOutput} />
       </div>
+    </div>
+  );
+}
+
+function SpecItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-3">
+        {label}
+      </dt>
+      <dd className="mt-1 font-mono text-[13px] text-ink">{value}</dd>
     </div>
   );
 }
@@ -102,6 +118,48 @@ export default function ProblemDetailPage() {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("PYTHON");
   const [fetchKey, setFetchKey] = useState(0);
   const [activeTab, setActiveTab] = useState<"description" | "solutions" | "submissions">("description");
+
+  // Resizable split between the statement and the editor.
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT);
+  const [dragging, setDragging] = useState(false);
+
+  const clampSplit = (value: number) =>
+    Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, value));
+
+  const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragging(true);
+  };
+
+  const handleDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging || !splitRef.current) return;
+    const bounds = splitRef.current.getBoundingClientRect();
+    setSplitPercent(
+      clampSplit(((event.clientX - bounds.left) / bounds.width) * 100),
+    );
+  };
+
+  const handleDragEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragging(false);
+  };
+
+  const handleSplitKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setSplitPercent((previous) => clampSplit(previous - 2));
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setSplitPercent((previous) => clampSplit(previous + 2));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setSplitPercent(DEFAULT_SPLIT);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -195,108 +253,155 @@ export default function ProblemDetailPage() {
   const testCases = state.problem.testCases;
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)]">
-      {/* Left panel - Problem statement */}
-      <div className="lg:w-1/2 flex flex-col border-r border-line overflow-hidden bg-bg">
-        {/* Top bar */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-line bg-surface/50">
+    <div
+      ref={splitRef}
+      style={{ ["--left-w" as string]: `${splitPercent}%` }}
+      className={`flex flex-col lg:flex-row h-[calc(100vh-4rem)] ${
+        dragging ? "cursor-col-resize select-none" : ""
+      }`}
+    >
+      {/* Left panel — problem statement */}
+      <div className="split-left flex flex-col overflow-hidden bg-bg">
+        {/* Nav + tabs */}
+        <div className="flex items-center gap-3 px-5 border-b border-line">
           <Link
             href="/problems"
-            className="p-1.5 rounded-lg text-ink-2 hover:text-ink hover:bg-elevated transition-colors"
+            title="Back to problems"
+            className="p-1.5 -ml-1.5 rounded-lg text-ink-3 hover:text-ink hover:bg-elevated transition-all hover:-translate-x-0.5"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <h1 className="text-base font-semibold text-ink truncate flex-1">
-            {state.problem.title}
-          </h1>
-          <DifficultyBadge difficulty={state.problem.difficulty} />
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-0 px-5 border-b border-line bg-surface/30">
-          {(["description", "solutions", "submissions"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-3 text-sm font-medium capitalize transition-colors relative ${
-                activeTab === tab
-                  ? "text-ink"
-                  : "text-ink-3 hover:text-ink-2"
-              }`}
-            >
-              {tab}
-              {activeTab === tab && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-accent rounded-full" />
-              )}
-            </button>
-          ))}
+          <span className="w-px h-4 bg-line" />
+          <div className="flex items-center">
+            {(["description", "solutions", "submissions"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`relative px-3 py-3 text-[13px] font-medium capitalize transition-colors ${
+                  activeTab === tab ? "text-ink" : "text-ink-3 hover:text-ink-2"
+                }`}
+              >
+                {tab}
+                <span
+                  className={`absolute -bottom-px left-3 right-3 h-[1.5px] rounded-full bg-accent transition-transform duration-300 ease-out ${
+                    activeTab === tab ? "scale-x-100" : "scale-x-0"
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           {activeTab === "description" && (
-            <div className="px-6 py-6 max-w-none">
-              {/* Problem title as heading */}
-              <h2 className="text-lg font-semibold text-ink mb-4">
-                {state.problem.title}
-              </h2>
+            <article className="px-8 py-9 max-w-[44rem]">
+              <header>
+                <div className="flex items-baseline justify-between gap-5">
+                  <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-ink">
+                    {state.problem.title}
+                  </h1>
+                  <DifficultyBadge
+                    difficulty={state.problem.difficulty}
+                    variant="mark"
+                    className="shrink-0 translate-y-px"
+                  />
+                </div>
 
-              {/* Meta info bar */}
-              <div className="flex items-center gap-4 mb-6 text-xs">
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-elevated text-ink-2">
-                  <Clock className="w-3 h-3" />
-                  {state.problem.timeLimitMs} ms
-                </span>
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-elevated text-ink-2">
-                  <HardDrive className="w-3 h-3" />
-                  {state.problem.memoryLimitMb} MB
-                </span>
-              </div>
+                <dl className="mt-6 flex items-start gap-10">
+                  <SpecItem
+                    label="Time limit"
+                    value={`${state.problem.timeLimitMs} ms`}
+                  />
+                  <SpecItem
+                    label="Memory"
+                    value={`${state.problem.memoryLimitMb} MB`}
+                  />
+                </dl>
+              </header>
+
+              <hr className="my-7 border-0 border-t border-line" />
 
               {/* Statement */}
-              <div className="problem-markdown">
+              <div className="problem-markdown problem-statement">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {state.problem.statementMd}
                 </ReactMarkdown>
               </div>
 
+              {/* Constraints */}
+              {state.problem.constraintsMd?.trim() && (
+                <section className="mt-10">
+                  <SectionLabel>Constraints</SectionLabel>
+                  <div className="problem-markdown problem-constraints">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {state.problem.constraintsMd}
+                    </ReactMarkdown>
+                  </div>
+                </section>
+              )}
+
               {/* Examples */}
               {testCases.length > 0 && (
-                <div className="mt-8">
-                  <h3 className="text-sm font-semibold text-ink mb-4 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-accent/12 text-accent text-[10px] font-bold flex items-center justify-center">
-                      {testCases.length}
-                    </span>
+                <section className="mt-10">
+                  <SectionLabel>
                     {testCases.length === 1 ? "Example" : "Examples"}
-                  </h3>
-                  <div className="space-y-4">
+                  </SectionLabel>
+                  <div className="space-y-7">
                     {testCases.map((tc, i) => (
-                      <TestCaseBlock key={tc.ordinal} tc={tc} index={i} />
+                      <ExampleBlock key={tc.ordinal} tc={tc} index={i} />
                     ))}
                   </div>
-                </div>
+                </section>
               )}
-            </div>
+            </article>
           )}
 
           {activeTab === "solutions" && (
-            <div className="flex flex-col items-center justify-center py-20 text-ink-3">
-              <CheckCircle2 className="w-10 h-10 mb-3 opacity-40" />
-              <p className="text-sm">Solutions coming soon</p>
+            <div className="px-8 py-24 text-center">
+              <p className="text-sm text-ink-3">Solutions are coming soon.</p>
             </div>
           )}
 
           {activeTab === "submissions" && (
-            <div className="flex flex-col items-center justify-center py-20 text-ink-3">
-              <CheckCircle2 className="w-10 h-10 mb-3 opacity-40" />
-              <p className="text-sm">No submissions yet</p>
+            <div className="px-8 py-24 text-center">
+              <p className="text-sm text-ink-3">No submissions yet.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Right panel - Code editor */}
-      <div className="lg:w-1/2 flex flex-col min-h-0">
+      {/* Drag handle */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panels"
+        aria-valuenow={Math.round(splitPercent)}
+        aria-valuemin={MIN_SPLIT}
+        aria-valuemax={MAX_SPLIT}
+        tabIndex={0}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
+        onKeyDown={handleSplitKeyDown}
+        onDoubleClick={() => setSplitPercent(DEFAULT_SPLIT)}
+        className="group hidden lg:flex relative w-1.5 shrink-0 cursor-col-resize items-center justify-center touch-none"
+      >
+        <span
+          className={`absolute inset-y-0 left-1/2 -translate-x-1/2 w-px transition-colors ${
+            dragging ? "bg-accent/60" : "bg-line group-hover:bg-accent/40"
+          }`}
+        />
+        <span
+          className={`relative h-9 w-[3px] rounded-full transition-colors ${
+            dragging ? "bg-accent/70" : "bg-transparent group-hover:bg-accent/50"
+          }`}
+        />
+      </div>
+
+      {/* Right panel — code editor */}
+      <div className="flex flex-col min-h-0 lg:flex-1 lg:min-w-0">
         {/* Editor toolbar */}
         <div className="flex items-center justify-between px-4 py-2.5 bg-surface border-b border-line">
           <LanguageSelector
@@ -320,7 +425,11 @@ export default function ProblemDetailPage() {
         </div>
 
         {/* Monaco editor */}
-        <div className="flex-1 min-h-0 editor-dark">
+        <div
+          className={`flex-1 min-h-0 editor-dark ${
+            dragging ? "pointer-events-none" : ""
+          }`}
+        >
           <CodeEditor
             language={selectedLanguage}
             value={state.codeByLanguage[selectedLanguage]}

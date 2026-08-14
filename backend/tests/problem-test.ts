@@ -9,6 +9,48 @@ import request from "supertest";
 
 import { app } from "../src/app.js";
 import { prisma } from "../src/lib/prisma.js";
+import { specs } from "../prisma/seed/problem.js";
+
+// Logs in with the test credentials and returns a request builder for `path`
+// carrying whichever auth mechanism login handed back (bearer token, cookies,
+// or both).
+async function authedGet(path: string) {
+    const loginResponse = await request(app)
+        .post("/api/auth/login")
+        .send({
+            email: process.env.TEST_EMAIL,
+            password: process.env.TEST_PASSWORD,
+        });
+
+    expect(loginResponse.status).toBe(200);
+
+    const token =
+        loginResponse.body.token ??
+        loginResponse.body.accessToken;
+
+    let problemRequest = request(app).get(path);
+
+    if (token) {
+        problemRequest =
+            problemRequest.set(
+                "Authorization",
+                `Bearer ${token}`
+            );
+    }
+
+    const cookies =
+        loginResponse.headers["set-cookie"];
+
+    if (cookies && cookies.length > 0) {
+        problemRequest =
+            problemRequest.set(
+                "Cookie",
+                cookies
+            );
+    }
+
+    return problemRequest;
+}
 
 describe("Problem API", () => {
 
@@ -266,6 +308,147 @@ describe("Problem API", () => {
             expect(
                 response.headers["cache-control"]
             ).toBe("public, max-age=60");
+        }
+    );
+
+
+    // ============================================================
+    // CONSTRAINTS — DETAIL
+    // ============================================================
+
+    test(
+        "returns constraints, starter code and only sample tests",
+        async () => {
+
+            const slug = "sum-of-two-numbers";
+
+            const spec = specs.find(
+                (candidate) => candidate.slug === slug
+            );
+
+            expect(spec).toBeDefined();
+
+
+            // 1. Endpoint responds 200
+            const response =
+                await authedGet(`/api/problems/${slug}`);
+
+            expect(response.status).toBe(200);
+
+            const problemDetails =
+                response.body.problemDetails;
+
+
+            // 2. constraintsMd exists
+            expect(problemDetails.constraintsMd)
+                .toBeDefined();
+
+            expect(typeof problemDetails.constraintsMd)
+                .toBe("string");
+
+            expect(
+                problemDetails.constraintsMd.trim().length
+            ).toBeGreaterThan(0);
+
+
+            // 3. constraintsMd holds the seeded value
+            expect(problemDetails.constraintsMd)
+                .toBe(spec!.constraintsMd);
+
+            expect(problemDetails.constraintsMd)
+                .toContain("-10^9 <= a <= 10^9");
+
+            // Constraints stay separate from the statement
+            expect(problemDetails.statementMd)
+                .not.toContain("-10^9 <= a <= 10^9");
+
+
+            // 4. starterCode still exists
+            expect(problemDetails.starterCode)
+                .toBeDefined();
+
+            for (const language of [
+                "PYTHON",
+                "JAVASCRIPT",
+                "JAVA",
+                "CPP",
+            ]) {
+                expect(
+                    typeof problemDetails
+                        .starterCode[language]
+                ).toBe("string");
+            }
+
+
+            // 5. Sample test cases are returned
+            const sampleTests =
+                await prisma.testCase.findMany({
+                    where: {
+                        problem: { slug },
+                        isSample: true,
+                    },
+                    orderBy: { ordinal: "asc" },
+                });
+
+            expect(sampleTests.length)
+                .toBe(spec!.samples.length);
+
+            expect(problemDetails.testCases.length)
+                .toBe(sampleTests.length);
+
+            for (const sample of sampleTests) {
+                expect(
+                    problemDetails.testCases.some(
+                        (testCase: {
+                            input: string;
+                            expectedOutput: string;
+                        }) =>
+                            testCase.input === sample.input &&
+                            testCase.expectedOutput ===
+                                sample.expectedOutput
+                    )
+                ).toBe(true);
+            }
+
+
+            // 6. Hidden test cases are NOT returned
+            const hiddenTests =
+                await prisma.testCase.findMany({
+                    where: {
+                        problem: { slug },
+                        isSample: false,
+                    },
+                });
+
+            expect(hiddenTests.length)
+                .toBe(spec!.hidden.length);
+
+            // Serialized without the generated cuid so short
+            // numeric outputs can't coincidentally match it.
+            const responseBody =
+                JSON.stringify({
+                    ...problemDetails,
+                    id: undefined,
+                });
+
+            for (const hidden of hiddenTests) {
+                // Not present as a returned test case ...
+                expect(
+                    problemDetails.testCases.some(
+                        (testCase: { input: string }) =>
+                            testCase.input === hidden.input
+                    )
+                ).toBe(false);
+
+                // ... and not leaked anywhere else in the payload.
+                expect(responseBody)
+                    .not.toContain(hidden.input.trimEnd());
+
+                expect(responseBody)
+                    .not.toContain(
+                        hidden.expectedOutput.trimEnd()
+                    );
+            }
         }
     );
 });

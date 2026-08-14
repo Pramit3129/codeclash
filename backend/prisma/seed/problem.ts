@@ -4,6 +4,7 @@ export interface ProblemSpec {
     slug: string;
     title: string;
     statementMd: string;
+    constraintsMd: string;
     difficulty: Difficulty;
     timeLimitMs: number;
     memoryLimitMb: number;
@@ -35,6 +36,13 @@ Two integers separated by a space.
 ## Output
 
 Print the sum of the two integers.
+`,
+
+        constraintsMd: `
+- The input contains exactly two integers \`a\` and \`b\` on a single line.
+- -10^9 <= a <= 10^9
+- -10^9 <= b <= 10^9
+- The sum fits in a signed 64-bit integer.
 `,
 
         difficulty: Difficulty.EASY,
@@ -156,6 +164,15 @@ The third line contains the target integer.
 ## Output
 
 Print the two indices in increasing order.
+`,
+
+        constraintsMd: `
+- 2 <= n <= 100000
+- -10^9 <= nums[i] <= 10^9
+- -10^9 <= target <= 10^9
+- Indices are 0-based.
+- The two indices must be different.
+- Exactly one valid answer exists.
 `,
 
         difficulty: Difficulty.EASY,
@@ -319,6 +336,13 @@ The second line contains \`n\` space-separated integers.
 Print the reversed array.
 `,
 
+        constraintsMd: `
+- 1 <= n <= 100000
+- -10^9 <= arr[i] <= 10^9
+- The second line contains exactly \`n\` integers.
+- Output the \`n\` integers on a single line, separated by single spaces.
+`,
+
         difficulty: Difficulty.MEDIUM,
 
         timeLimitMs: 1000,
@@ -453,6 +477,14 @@ The next \`r\` lines each contain \`c\` integers.
 ## Output
 
 Print the sum of all elements in the matrix.
+`,
+
+        constraintsMd: `
+- 1 <= r <= 1000
+- 1 <= c <= 1000
+- r * c <= 100000
+- -10^9 <= matrix[i][j] <= 10^9
+- The total sum fits in a signed 64-bit integer.
 `,
 
         difficulty: Difficulty.MEDIUM,
@@ -611,6 +643,13 @@ letters.
 ## Output
 
 Print the longest palindromic substring.
+`,
+
+        constraintsMd: `
+- 1 <= |s| <= 1000
+- \`s\` consists only of lowercase English letters (\`a\`-\`z\`).
+- \`s\` contains no spaces.
+- If several palindromic substrings share the maximum length, print the one with the smallest starting index.
 `,
 
         difficulty: Difficulty.HARD,
