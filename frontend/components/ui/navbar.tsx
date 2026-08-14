@@ -51,6 +51,7 @@ function getInitials(name: string): string {
 }
 
 const NAV_LINKS = [
+  { label: "Problems", href: "/problems" },
   { label: "Features", href: "#features" },
   { label: "How it works", href: "#how-it-works" },
   { label: "Leaderboard", href: "#leaderboard" },
@@ -145,19 +146,33 @@ export function Navbar({ onOpenAuth }: NavbarProps) {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-8">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className={`nav-link text-sm font-medium transition-colors ${
-                  active === link.href
-                    ? "nav-link-active text-ink"
-                    : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                {link.label}
-              </a>
-            ))}
+            {NAV_LINKS.map((link) =>
+              link.href.startsWith("/") ? (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`nav-link text-sm font-medium transition-colors ${
+                    active === link.href
+                      ? "nav-link-active text-ink"
+                      : "text-ink-2 hover:text-ink"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ) : (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className={`nav-link text-sm font-medium transition-colors ${
+                    active === link.href
+                      ? "nav-link-active text-ink"
+                      : "text-ink-2 hover:text-ink"
+                  }`}
+                >
+                  {link.label}
+                </a>
+              )
+            )}
           </nav>
 
           {/* Desktop actions */}
@@ -249,19 +264,33 @@ export function Navbar({ onOpenAuth }: NavbarProps) {
       {mobileMenuOpen && (
         <div className="md:hidden px-5 pb-6 pt-2 bg-bg/90 backdrop-blur-2xl border-b border-line">
           <nav className="flex flex-col">
-            {NAV_LINKS.map((link, i) => (
-              <a
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`mobile-item py-3.5 text-sm font-medium transition-colors border-b border-line/70 ${
-                  active === link.href ? "text-ink" : "text-ink-2 hover:text-ink"
-                }`}
-                style={{ animationDelay: `${i * 45}ms` }}
-              >
-                {link.label}
-              </a>
-            ))}
+            {NAV_LINKS.map((link, i) =>
+              link.href.startsWith("/") ? (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`mobile-item py-3.5 text-sm font-medium transition-colors border-b border-line/70 ${
+                    active === link.href ? "text-ink" : "text-ink-2 hover:text-ink"
+                  }`}
+                  style={{ animationDelay: `${i * 45}ms` }}
+                >
+                  {link.label}
+                </Link>
+              ) : (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`mobile-item py-3.5 text-sm font-medium transition-colors border-b border-line/70 ${
+                    active === link.href ? "text-ink" : "text-ink-2 hover:text-ink"
+                  }`}
+                  style={{ animationDelay: `${i * 45}ms` }}
+                >
+                  {link.label}
+                </a>
+              )
+            )}
           </nav>
           <div
             className="mobile-item flex gap-3 pt-5"

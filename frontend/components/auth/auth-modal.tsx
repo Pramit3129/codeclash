@@ -86,7 +86,7 @@ export function AuthModal({
         setPassword("");
         setName("");
         onClose();
-        router.push("/profile");
+        router.push("/");
       }, 1100);
     } catch (err) {
       if (err instanceof ApiError && err.status === 422 && isRecord(err.details)) {
