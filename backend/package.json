@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "bun --watch src/server.ts",
-    "build": "bun build src/server.ts --outdir ./dist --target node",
+    "build": "bun build src/server.ts src/judge-worker.ts --outdir ./dist --target node",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
@@ -34,7 +34,7 @@
   "dependencies": {
     "@prisma/client": "6",
     "bcryptjs": "^3.0.3",
-    "bullmq": "^5.81.2",
+    "bullmq": "^6.1.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

@@ -1,0 +1,1 @@
+import "../docker/judge/runner/judge.worker.ts";
