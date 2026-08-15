@@ -32,7 +32,9 @@ enum SubmissionVerdict {
   MLE
   RE
   OLE
+  CE
 }
+
 
 model User {
   id String @id @default(cuid())

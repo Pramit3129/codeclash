@@ -37,9 +37,38 @@ export class JudgeService {
 
     try {
       /*
+       * Prepare sandbox (e.g. compile C++ or Java code if applicable).
+       */
+      const prepResult =
+        await this.runner.prepareSandbox(
+          sandbox,
+          request,
+        );
+
+      if (prepResult && prepResult.exitCode !== 0) {
+        return {
+          verdict: "CE",
+
+          passedTestCases: 0,
+
+          totalTestCases:
+            testCases.length,
+
+          failedTestCaseId: null,
+
+          executionTimeMs:
+            performance.now() -
+            submissionStartTime,
+
+          testResults: [],
+        };
+      }
+
+      /*
        * Run tests sequentially.
        */
       for (const testCase of testCases) {
+
         const testStartTime =
           performance.now();
 

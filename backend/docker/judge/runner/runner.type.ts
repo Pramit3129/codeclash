@@ -1,8 +1,9 @@
 export type SupportedLanguage =
   | "python"
+  | "javascript"
   | "java"
-  | "c++"
-  | "js";
+  | "cpp";
+
 
 export interface RunRequest {
   language: SupportedLanguage;

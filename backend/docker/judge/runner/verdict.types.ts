@@ -55,7 +55,9 @@ export type Verdict =
   | "TLE"
   | "MLE"
   | "RE"
-  | "OLE";
+  | "OLE"
+  | "CE";
+
 
 export interface TestResult {
   testCaseId: string;

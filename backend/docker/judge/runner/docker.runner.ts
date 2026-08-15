@@ -331,6 +331,11 @@ import type {
   RunResult,
 } from "./runner.type.ts";
 
+import {
+  LANGUAGE_CONFIG,
+  type LanguageConfig,
+} from "./language.config.ts";
+
 export interface Sandbox {
   executionId: string;
   executionDir: string;
@@ -351,6 +356,15 @@ export class DockerRunner {
   async createSandbox(
     request: RunRequest,
   ): Promise<Sandbox> {
+    const config =
+      LANGUAGE_CONFIG[request.language];
+
+    if (!config) {
+      throw new Error(
+        `Unsupported language: ${request.language}`,
+      );
+    }
+
     const executionId = crypto.randomUUID();
 
     const executionDir = path.join(
@@ -364,7 +378,7 @@ export class DockerRunner {
 
     const sourcePath = path.join(
       executionDir,
-      "main.py",
+      config.sourceFile,
     );
 
     await fs.writeFile(
@@ -387,6 +401,7 @@ export class DockerRunner {
       containerName,
       executionDir,
       memoryLimitMb: request.memoryLimitMb,
+      config,
     });
 
     return {
@@ -395,6 +410,51 @@ export class DockerRunner {
       containerName,
     };
   }
+
+  /**
+   * Runs the language preparation command (e.g. compilation with javac/g++)
+   * inside the sandbox before executing test cases.
+   */
+  async prepareSandbox(
+    sandbox: Sandbox,
+    request: RunRequest,
+  ): Promise<{ exitCode: number | null; stdout: string; stderr: string } | null> {
+    const config =
+      LANGUAGE_CONFIG[request.language];
+
+    if (!config || config.prepareCommand.length === 0) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const process = spawn("docker", [
+        "exec",
+        "-i",
+        sandbox.containerName,
+        ...config.prepareCommand,
+      ]);
+
+      let stdout = "";
+      let stderr = "";
+
+      process.stdout.on("data", (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      process.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      process.on("error", (error) => {
+        reject(error);
+      });
+
+      process.on("close", (exitCode) => {
+        resolve({ exitCode, stdout, stderr });
+      });
+    });
+  }
+
 
   private appendOutputPreview(
     current: string,
@@ -442,15 +502,24 @@ export class DockerRunner {
     let stdoutBytes = 0;
     let stderrBytes = 0;
 
+    const config =
+      LANGUAGE_CONFIG[request.language];
+
+    if (!config) {
+      throw new Error(
+        `Unsupported language: ${request.language}`,
+      );
+    }
+
     const process = spawn("docker", [
       "exec",
       "-i",
 
       sandbox.containerName,
 
-      "python3",
-      "/sandbox/main.py",
+      ...config.executeCommand,
     ]);
+
 
     const killProcess = () => {
       const kill = spawn("docker", [
@@ -602,21 +671,22 @@ export class DockerRunner {
     containerName,
     executionDir,
     memoryLimitMb,
+    config,
   }: {
     containerName: string;
     executionDir: string;
     memoryLimitMb: number;
+    config: LanguageConfig;
   }): Promise<void> {
     return new Promise((resolve, reject) => {
       const docker = spawn("docker", [
-        "run",
-
         /*
          * Detached mode.
          *
          * Docker starts the container and immediately
          * returns control to Node.
          */
+        "run",
         "-d",
 
         "--name",
@@ -626,7 +696,7 @@ export class DockerRunner {
         "none",
 
         "--pids-limit",
-        "10",
+        "100",
 
         "--memory",
         `${memoryLimitMb}m`,
@@ -637,10 +707,11 @@ export class DockerRunner {
         "--read-only",
 
         "--tmpfs",
-        "/tmp",
+        "/tmp:exec",
 
         "--cap-drop",
         "ALL",
+
 
         "-v",
         `${executionDir}:/sandbox:ro`,
@@ -648,12 +719,12 @@ export class DockerRunner {
         /*
          * Override the image's normal ENTRYPOINT.
          *
-         * Otherwise run.sh would execute main.py immediately.
+         * Otherwise run.sh would execute main script immediately.
          */
         "--entrypoint",
         "sleep",
 
-        "algoriumx-judge-python:1",
+        config.image,
 
         "infinity",
       ]);

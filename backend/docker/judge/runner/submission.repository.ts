@@ -11,9 +11,11 @@ import type {
 
 const languageMap = {
   python: "PYTHON",
-  java: "JAVA",
-  "c++": "CPP",
+  javascript: "JAVASCRIPT",
   js: "JAVASCRIPT",
+  java: "JAVA",
+  cpp: "CPP",
+  "c++": "CPP",
 } as const;
 
 const verdictMap = {
@@ -23,7 +25,9 @@ const verdictMap = {
   MLE: "MLE",
   RE: "RE",
   OLE: "OLE",
+  CE: "CE",
 } as const;
+
 
 export class SubmissionRepository {
   constructor(
