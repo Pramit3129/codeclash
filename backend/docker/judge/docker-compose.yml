@@ -3,25 +3,40 @@ services:
     image: ghcr.io/pramit3129/codeclash-judge-worker:latest
 
     environment:
+      PORT: ${PORT}
+      NODE_ENV: ${NODE_ENV}
+
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+
+      FRONTEND_URL: ${FRONTEND_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      ACCESS_TOKEN_EXPIRES_IN: ${ACCESS_TOKEN_EXPIRES_IN}
+      REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS}
+
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
+      COOKIE_NAME: ${COOKIE_NAME}
+
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI}
+      GITHUB_SCOPES: ${GITHUB_SCOPES}
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
     networks:
       - dokploy-network
-
-    restart: unless-stopped
-
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 1G
 
 networks:
   dokploy-network:
