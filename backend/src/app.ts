@@ -9,6 +9,7 @@ import { healthRouter } from "./routes/health.route.js";
 import { readyRouter } from "./routes/ready.route.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { problemRouter } from "./modules/problems/problem.route.ts";
+import { submissionRouter } from "./modules/submissions/submission.route.ts";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.ts";
 
 const app = express();
@@ -54,6 +55,8 @@ app.use("/health", healthRouter);
 app.use("/readyz", readyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/problems", problemRouter);
+app.use("/api/submissions", submissionRouter);
+
 
 // 404 + centralized error handling (must be last).
 app.use(notFoundHandler);

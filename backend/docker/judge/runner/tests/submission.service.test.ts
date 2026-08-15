@@ -34,10 +34,10 @@ const problemRepository =
 
 const submissionService =
   new SubmissionService(
-    judgeService,
     submissionRepository,
     problemRepository,
   );
+
 
 const user =
   await prisma.user.findFirst();

@@ -1,13 +1,19 @@
 import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../../../src/lib/prisma.js";
 
 export class ProblemRepository {
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly prisma?: PrismaClient,
   ) {}
+
+  private get db(): PrismaClient {
+    return this.prisma || defaultPrisma;
+  }
 
   async findById(problemId: string) {
     const problem =
-      await this.prisma.problem.findUnique({
+      await this.db.problem.findUnique({
+
         where: {
           id: problemId,
         },

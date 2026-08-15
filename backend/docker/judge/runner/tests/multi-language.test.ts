@@ -15,10 +15,10 @@ const submissionRepository = new SubmissionRepository(prisma);
 const problemRepository = new ProblemRepository(prisma);
 
 const submissionService = new SubmissionService(
-  judgeService,
   submissionRepository,
   problemRepository,
 );
+
 
 const user = await prisma.user.findFirst();
 if (!user) throw new Error("No user exists in database");

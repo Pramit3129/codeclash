@@ -1,14 +1,11 @@
-import { JudgeService } from "./judge.service.ts";
-import { SubmissionRepository } from "./submission.repository.ts";
 import { ProblemRepository } from "./problem.repository.ts";
+import { SubmissionRepository } from "./submission.repository.ts";
+import { judgeQueue } from "./judge.queue.ts";
 
-import type {
-  SupportedLanguage,
-} from "./runner.type.ts";
+import type { SupportedLanguage } from "./runner.type.ts";
 
 export class SubmissionService {
   constructor(
-    private readonly judgeService: JudgeService,
     private readonly submissionRepository: SubmissionRepository,
     private readonly problemRepository: ProblemRepository,
   ) {}
@@ -25,58 +22,33 @@ export class SubmissionService {
     sourceCode: string;
   }) {
     if (!sourceCode.trim()) {
-      throw new Error(
-        "Source code cannot be empty",
-      );
+      throw new Error("Source code cannot be empty");
     }
 
     const problem =
-      await this.problemRepository.findById(
-        problemId,
-      );
+      await this.problemRepository.findById(problemId);
 
     if (problem.testCases.length === 0) {
-      throw new Error(
-        "Problem has no test cases",
-      );
+      throw new Error("Problem has no test cases");
     }
 
-    const testCases =
-      problem.testCases.map(
-        (testCase) => ({
-          id: testCase.id,
+    const submission =
+      await this.submissionRepository.createQueued({
+        userId,
+        problemId,
+        language,
+        sourceCode,
+        totalTestCases: problem.testCases.length,
+      });
 
-          stdin: testCase.input,
-
-          expectedOutput:
-            testCase.expectedOutput,
-
-          isSample:
-            testCase.isSample,
-        }),
-      );
-
-    const result =
-      await this.judgeService.judge(
-        {
-          language,
-          sourceCode,
-          stdin: "",
-          timeLimitMs:
-            problem.timeLimitMs,
-          memoryLimitMb:
-            problem.memoryLimitMb,
-        },
-
-        testCases,
-      );
-
-    return this.submissionRepository.create({
+    await judgeQueue.add("judge-submission", {
+      submissionId: submission.id,
       userId,
       problemId,
       language,
       sourceCode,
-      result,
     });
+
+    return submission;
   }
 }
