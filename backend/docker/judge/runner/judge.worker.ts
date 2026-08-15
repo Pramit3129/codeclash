@@ -9,6 +9,7 @@ import { JudgeService } from "./judge.service.ts";
 import { ProblemRepository } from "./problem.repository.ts";
 import { SubmissionRepository } from "./submission.repository.ts";
 import { LANGUAGE_CONFIG } from "./language.config.ts";
+import { resolveConcurrency } from "./judge.concurrency.ts";
 import type { SupportedLanguage } from "./runner.type.ts";
 
 const prisma = new PrismaClient();
@@ -26,8 +27,19 @@ const submissionRepository = new SubmissionRepository(prisma);
  * throughput against timing accuracy: co-scheduled submissions inflate
  * each other's wall-clock time and cause spurious TLEs.
  */
-const JUDGE_CONCURRENCY = Number(
-  process.env.JUDGE_CONCURRENCY ?? "1",
+const JUDGE_CONCURRENCY = resolveConcurrency(
+  process.env.JUDGE_CONCURRENCY,
+
+  /*
+   * A misconfiguration must degrade to "works, serially" and say so —
+   * never to "silently stops judging".
+   */
+  (suppliedValue) => {
+    logger.warn(
+      { JUDGE_CONCURRENCY: suppliedValue },
+      "invalid JUDGE_CONCURRENCY, falling back to 1",
+    );
+  },
 );
 
 /**
