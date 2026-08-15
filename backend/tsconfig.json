@@ -7,6 +7,9 @@
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
+    // Without an explicit list the "bun:test" ambient module is not pulled
+    // into the program and every test file fails to typecheck.
+    "types": ["bun", "node"],
 
     // Bundler mode
     "moduleResolution": "bundler",

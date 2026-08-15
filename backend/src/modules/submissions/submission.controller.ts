@@ -66,6 +66,7 @@ export const createSubmission = async (
     success: true,
     submission: {
       id: submission.id,
+      status: submission.status,
       verdict: submission.verdict,
       totalTestCases:
         submission.totalTestCases,

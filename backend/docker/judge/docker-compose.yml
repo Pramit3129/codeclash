@@ -9,6 +9,15 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
 
+      # Must match the bind mount below on both sides.
+      JUDGE_WORK_DIR: /tmp/algoriumx
+
+      # Judge jobs processed in parallel. Each concurrent job runs its
+      # own sandbox at 0.5 CPU and the problem's memory limit, so raise
+      # this only with host capacity to match - oversubscription inflates
+      # wall-clock time and causes spurious TLE verdicts.
+      JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-1}
+
       FRONTEND_URL: ${FRONTEND_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
 
@@ -32,8 +41,19 @@ services:
       GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI}
       GITHUB_SCOPES: ${GITHUB_SCOPES}
 
+    # JUDGE_WORK_DIR must be identical on the host and inside this
+    # container. The worker asks the HOST daemon to bind-mount each
+    # submission directory into a sandbox, and the daemon resolves that
+    # path on the host. If the path exists only inside this container,
+    # Docker creates an empty directory on the host instead and every
+    # submission fails with "No such file or directory".
     volumes:
+      # The worker drives the host daemon to create sandbox containers.
+      # This socket is mounted ONLY here, never into a sandbox.
       - /var/run/docker.sock:/var/run/docker.sock
+
+      # Same path on both sides - see the note above.
+      - /tmp/algoriumx:/tmp/algoriumx
 
     networks:
       - dokploy-network

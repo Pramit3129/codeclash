@@ -35,6 +35,19 @@ enum SubmissionVerdict {
   CE
 }
 
+// Lifecycle of a submission, kept separate from `verdict`.
+//
+// `verdict` alone cannot distinguish "still queued" from "the worker died
+// mid-run" — both leave it null — which strands submissions in a state the
+// API cannot explain. FAILED means an infrastructure fault, never a judge
+// result, so an outage is never reported to a user as WA/RE.
+enum SubmissionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 
 model User {
   id String @id @default(cuid())
@@ -182,7 +195,13 @@ model Submission {
   language   SubmissionLanguage
   sourceCode String
 
+  status SubmissionStatus @default(QUEUED)
+
   verdict SubmissionVerdict?
+
+  // Set only when status = FAILED. Operator-facing description of an
+  // infrastructure fault; never contains source code or secrets.
+  failureReason String?
 
   passedTestCases Int @default(0)
   totalTestCases  Int @default(0)
@@ -201,6 +220,8 @@ model Submission {
   @@index([userId, createdAt])
   @@index([problemId, createdAt])
   @@index([verdict])
+  // Supports the recovery sweep for submissions stranded in RUNNING.
+  @@index([status, createdAt])
 }
 
 model SubmissionTestResult {

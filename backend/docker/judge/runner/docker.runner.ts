@@ -340,10 +340,69 @@ export interface Sandbox {
   executionId: string;
   executionDir: string;
   containerName: string;
+
+  /**
+   * Set when an execution had to be force-abandoned (the sandbox was
+   * left in an unknown state). Such a sandbox must not be reused for
+   * further test cases — only destroyed.
+   */
+  poisoned: boolean;
 }
 
+/**
+ * Docker label applied to every sandbox container so that the startup
+ * reaper can identify judge-owned containers without ever touching
+ * unrelated containers on the host.
+ */
+export const JUDGE_CONTAINER_LABEL = "com.algoriumx.judge";
+
+/**
+ * Grace period allowed for `docker exec` to tear down after we have
+ * SIGKILLed the user's processes. If it elapses we abandon the exec
+ * rather than let the worker hang forever.
+ */
+const KILL_GRACE_MS = 3_000;
+
+/**
+ * Upper bound on the auxiliary docker CLI calls (inspect / kill / rm).
+ * A wedged docker daemon must not translate into a wedged worker.
+ */
+const DOCKER_AUX_TIMEOUT_MS = 10_000;
+
+/**
+ * Wall-clock bound on the language prepare/compile step.
+ */
+const COMPILE_TIMEOUT_MS = 20_000;
+
+/**
+ * Compiler diagnostics retained (bytes). Enough for a useful CE
+ * message without letting a diagnostic flood grow the worker heap.
+ */
+const MAX_COMPILE_OUTPUT_BYTES = 8 * 1024;
+
+/**
+ * Synthetic non-zero exit code used when compilation is killed for
+ * exceeding COMPILE_TIMEOUT_MS. JudgeService maps any non-zero
+ * prepare exit code to CE.
+ */
+const COMPILE_TIMEOUT_EXIT_CODE = 124;
+
 export class DockerRunner {
-  private readonly baseDir = "/tmp/algoriumx";
+  /**
+   * Host-side staging directory for submission source.
+   *
+   * CRITICAL DEPLOYMENT CONSTRAINT: the worker talks to the host's
+   * Docker daemon over /var/run/docker.sock, so the `-v` path below is
+   * resolved by the DAEMON on the HOST — not inside this process's
+   * mount namespace. When the worker itself runs in a container, this
+   * path must therefore be bind-mounted from the host to the SAME path
+   * inside the worker, or Docker silently creates an empty host
+   * directory and every submission fails to find its source file.
+   *
+   * See docker/judge/docker-compose.yml.
+   */
+  private readonly baseDir =
+    process.env.JUDGE_WORK_DIR ?? "/tmp/algoriumx";
 
   /**
    * Creates the host-side execution directory,
@@ -408,6 +467,7 @@ export class DockerRunner {
       executionId,
       executionDir,
       containerName,
+      poisoned: false,
     };
   }
 
@@ -427,7 +487,7 @@ export class DockerRunner {
     }
 
     return new Promise((resolve, reject) => {
-      const process = spawn("docker", [
+      const child = spawn("docker", [
         "exec",
         "-i",
         sandbox.containerName,
@@ -436,20 +496,89 @@ export class DockerRunner {
 
       let stdout = "";
       let stderr = "";
+      let settled = false;
 
-      process.stdout.on("data", (data: Buffer) => {
-        stdout += data.toString();
+      /*
+       * Compilation is attacker-controlled work: a template
+       * recursion bomb (C++) or a pathological generic (Java) can
+       * compile effectively forever. Without a bound this hangs the
+       * worker exactly like an unbounded execution would.
+       */
+      const timer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        const kill = spawn("docker", [
+          "exec",
+          sandbox.containerName,
+          "sh",
+          "-c",
+          "kill -KILL -1",
+        ]);
+
+        kill.on("error", () => {
+          // Nothing left to kill.
+        });
+
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // Already gone.
+        }
+
+        /*
+         * Surfaced as a failed compile: from the user's perspective
+         * their program did not build within the allowance.
+         */
+        resolve({
+          exitCode: COMPILE_TIMEOUT_EXIT_CODE,
+          stdout,
+          stderr:
+            stderr +
+            `\nCompilation exceeded the ${COMPILE_TIMEOUT_MS}ms limit.`,
+        });
+      }, COMPILE_TIMEOUT_MS);
+
+      /*
+       * Compiler diagnostics are attacker-influenced too, so the
+       * buffers must stay bounded.
+       */
+      child.stdout.on("data", (data: Buffer) => {
+        stdout = this.appendOutputPreview(
+          stdout,
+          data,
+          MAX_COMPILE_OUTPUT_BYTES,
+        );
       });
 
-      process.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString();
+      child.stderr.on("data", (data: Buffer) => {
+        stderr = this.appendOutputPreview(
+          stderr,
+          data,
+          MAX_COMPILE_OUTPUT_BYTES,
+        );
       });
 
-      process.on("error", (error) => {
+      child.on("error", (error) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timer);
         reject(error);
       });
 
-      process.on("close", (exitCode) => {
+      child.on("close", (exitCode) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timer);
         resolve({ exitCode, stdout, stderr });
       });
     });
@@ -483,14 +612,48 @@ export class DockerRunner {
     );
   }
   /**
-   * Executes the user's program for ONE test case
-   * inside an already-running sandbox.
+   * Executes the user's program for ONE test case inside an
+   * already-running sandbox.
+   *
+   * Enforcement model
+   * -----------------
+   * We never `docker kill` the sandbox to enforce TLE/OLE: that would
+   * destroy the container, and JudgeService reuses one sandbox for the
+   * whole submission.
+   *
+   * We also do NOT track the submitted program by PID. A PID file lives
+   * on the sandbox's writable /tmp, so the submitted program can read
+   * and overwrite it (verified empirically); pointing it at a dead PID
+   * made the kill a no-op and hung the worker forever, and pointing it
+   * at PID 1 let user code stop its own sandbox. PID-based killing also
+   * leaves forked children running.
+   *
+   * Instead we SIGKILL the container's whole process namespace with
+   * `kill -KILL -1`. Linux excludes PID 1 (the `sleep infinity`
+   * entrypoint) and the calling shell from that broadcast, so the
+   * sandbox survives while every user process — parent and all
+   * children — dies. There is nothing on the writable filesystem for
+   * user code to influence.
+   *
+   * INVARIANT: this makes an execution namespace-wide, so at most one
+   * execution may be in flight per sandbox. JudgeService runs test
+   * cases sequentially against its own sandbox, which satisfies this.
+   *
+   * The method is guaranteed to settle: every wait is bounded by the
+   * time limit plus a kill grace period, after which the exec is
+   * abandoned and the sandbox is marked poisoned.
    */
   async execute(
     sandbox: Sandbox,
     request: RunRequest,
     stdin: string,
   ): Promise<RunResult> {
+    if (sandbox.poisoned) {
+      throw new Error(
+        `Refusing to execute in poisoned sandbox ${sandbox.containerName}`,
+      );
+    }
+
     let stdout = "";
     let stderr = "";
 
@@ -511,7 +674,7 @@ export class DockerRunner {
       );
     }
 
-    const process = spawn("docker", [
+    const child = spawn("docker", [
       "exec",
       "-i",
 
@@ -520,82 +683,39 @@ export class DockerRunner {
       ...config.executeCommand,
     ]);
 
+    return new Promise<RunResult>((resolve, reject) => {
+      let settled = false;
 
-    const killProcess = () => {
-      const kill = spawn("docker", [
-        "kill",
-        sandbox.containerName,
-      ]);
+      let limitTimer: ReturnType<typeof setTimeout> | null =
+        setTimeout(() => {
+          timedOut = true;
+          enforceLimit();
+        }, request.timeLimitMs);
 
-      kill.on("error", () => {
-        /*
-         * The container may already have stopped.
-         */
-      });
-    };
+      let graceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const timeout = setTimeout(() => {
-      timedOut = true;
+      const clearTimers = () => {
+        if (limitTimer) {
+          clearTimeout(limitTimer);
+          limitTimer = null;
+        }
 
-      killProcess();
-    }, request.timeLimitMs);
+        if (graceTimer) {
+          clearTimeout(graceTimer);
+          graceTimer = null;
+        }
+      };
 
-    process.stderr.on("data", (data: Buffer) => {
-      stderrBytes += data.length;
+      const settle = (
+        exitCode: number | null,
+        memoryExceeded: boolean,
+      ) => {
+        if (settled) {
+          return;
+        }
 
-      if (
-        stderrBytes > MAX_OUTPUT_BYTES &&
-        !outputExceeded
-      ) {
-        outputExceeded = true;
-        killProcess();
-      }
-
-      stderr = this.appendOutputPreview(
-        stderr,
-        data,
-        MAX_STORED_OUTPUT_BYTES,
-      );
-    });
-
-    process.stdout.on("data", (data: Buffer) => {
-      stdoutBytes += data.length;
-
-      if (
-        stdoutBytes > MAX_OUTPUT_BYTES &&
-        !outputExceeded
-      ) {
-        outputExceeded = true;
-        killProcess();
-      }
-
-      stdout = this.appendOutputPreview(
-        stdout,
-        data,
-        MAX_STORED_OUTPUT_BYTES,
-      );
-    });
-
-    return new Promise((resolve, reject) => {
-      process.on("error", (error) => {
-        clearTimeout(timeout);
-
-        reject(error);
-      });
-
-      process.on("close", async (exitCode) => {
-        clearTimeout(timeout);
-
-        /*
-         * Only inspect OOM if this wasn't already
-         * identified as TLE or OLE.
-         */
-        const memoryExceeded =
-          !timedOut &&
-          !outputExceeded &&
-          await this.isOOMKilled(
-            sandbox.containerName,
-          );
+        settled = true;
+        clearTimers();
 
         resolve({
           stdout,
@@ -607,13 +727,193 @@ export class DockerRunner {
           memoryExceeded,
           outputExceeded,
         });
+      };
+
+      const fail = (error: Error) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimers();
+
+        reject(error);
+      };
+
+      /*
+       * Abandon the exec. Used when the sandbox does not tear down
+       * within the grace period after a SIGKILL broadcast. We detach
+       * our side and mark the sandbox unusable; JudgeService destroys
+       * it in its finally block.
+       */
+      const abandon = () => {
+        if (settled) {
+          return;
+        }
+
+        sandbox.poisoned = true;
+
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // The CLI process may already be gone.
+        }
+
+        /*
+         * A limit breach is never MLE — we SIGKILLed it ourselves.
+         */
+        settle(null, false);
+      };
+
+      /*
+       * SIGKILL every user process in the sandbox's PID namespace.
+       * Idempotent: repeated breaches (e.g. TLE right after OLE) must
+       * not spawn a kill storm.
+       */
+      let killIssued = false;
+
+      const killAllUserProcesses = () => {
+        if (killIssued) {
+          return;
+        }
+
+        killIssued = true;
+
+        const kill = spawn("docker", [
+          "exec",
+          sandbox.containerName,
+
+          /*
+           * `kill` is a shell builtin in these minimal judge images,
+           * not a standalone executable, so it must go through `sh`.
+           */
+          "sh",
+          "-c",
+          "kill -KILL -1",
+        ]);
+
+        kill.on("error", () => {
+          /*
+           * Nothing left to kill, or the daemon is unreachable. The
+           * grace timer below is the backstop.
+           */
+        });
+      };
+
+      function enforceLimit() {
+        killAllUserProcesses();
+
+        if (graceTimer === null) {
+          graceTimer = setTimeout(abandon, KILL_GRACE_MS);
+        }
+      }
+
+      child.stderr.on("data", (data: Buffer) => {
+        stderrBytes += data.length;
+
+        if (
+          stderrBytes > MAX_OUTPUT_BYTES &&
+          !outputExceeded
+        ) {
+          outputExceeded = true;
+          enforceLimit();
+        }
+
+        stderr = this.appendOutputPreview(
+          stderr,
+          data,
+          MAX_STORED_OUTPUT_BYTES,
+        );
       });
 
-      process.stdin.write(stdin);
-      process.stdin.end();
+      child.stdout.on("data", (data: Buffer) => {
+        stdoutBytes += data.length;
+
+        if (
+          stdoutBytes > MAX_OUTPUT_BYTES &&
+          !outputExceeded
+        ) {
+          outputExceeded = true;
+          enforceLimit();
+        }
+
+        stdout = this.appendOutputPreview(
+          stdout,
+          data,
+          MAX_STORED_OUTPUT_BYTES,
+        );
+      });
+
+      child.on("error", (error) => {
+        fail(error);
+      });
+
+      /*
+       * IMPORTANT:
+       *
+       * A submitted program may exit before consuming stdin, so
+       * Docker's stdin pipe can emit EPIPE. That must NOT crash the
+       * worker.
+       */
+      child.stdin.on("error", () => {
+        // Expected when the child exits before consuming stdin.
+      });
+
+      const finishWith = async (exitCode: number | null) => {
+        if (settled) {
+          return;
+        }
+
+        /*
+         * The program has already exited, so the time limit no longer
+         * applies. Stop the timer BEFORE the await below: isOOMKilled
+         * shells out to `docker inspect`, and if that is slow the timer
+         * would otherwise fire during the await and flip `timedOut` on
+         * a run that finished well within its limit.
+         */
+        if (limitTimer) {
+          clearTimeout(limitTimer);
+          limitTimer = null;
+        }
+
+        /*
+         * Only consult Docker's OOM state when the limits we enforce
+         * ourselves were not hit: on TLE/OLE the 137 exit code is our
+         * own SIGKILL, and the container's OOMKilled flag is sticky,
+         * so trusting it there would mislabel TLE/OLE as MLE.
+         *
+         * Docker's OOMKilled is authoritative for MLE; a bare exit
+         * code of 137 is never sufficient on its own.
+         */
+        const memoryExceeded =
+          !timedOut &&
+          !outputExceeded &&
+          (await this.isOOMKilled(
+            sandbox.containerName,
+          ));
+
+        settle(exitCode, memoryExceeded);
+      };
+
+      /*
+       * KNOWN BEHAVIOUR: if the submitted program exits but leaves a
+       * background child holding stdout, the `docker exec` CLI stays
+       * attached and neither `exit` nor `close` fires here. Such a
+       * submission runs out its time limit and is reported TLE.
+       *
+       * That is the safe direction to fail — the process tree really
+       * did not terminate within the limit — and the time-limit timer
+       * above still guarantees we settle. Settling early instead would
+       * risk truncating output that is still in flight.
+       */
+      child.on("close", (exitCode) => {
+        void finishWith(exitCode);
+      });
+
+      child.stdin.write(stdin);
+      child.stdin.end();
     });
   }
-
   /**
    * Destroys the Docker container and removes
    * the host-side execution directory.
@@ -701,17 +1001,46 @@ export class DockerRunner {
         "--memory",
         `${memoryLimitMb}m`,
 
+        /*
+         * Without an explicit swap limit Docker grants swap equal to
+         * --memory, so a program could use 2x the intended memory and
+         * escape MLE detection entirely.
+         */
+        "--memory-swap",
+        `${memoryLimitMb}m`,
+
         "--cpus",
         "0.5",
 
         "--read-only",
 
+        /*
+         * /tmp must be writable and executable for the Java and C++
+         * compile outputs. Bounding its size keeps a runaway program
+         * from filling the tmpfs; the pages are charged to this
+         * container's memory cgroup either way.
+         */
         "--tmpfs",
-        "/tmp:exec",
+        `/tmp:exec,size=${memoryLimitMb}m`,
 
         "--cap-drop",
         "ALL",
 
+        /*
+         * These images still ship setuid-root binaries (e.g.
+         * /usr/bin/passwd). --cap-drop ALL empties the bounding set but
+         * does not stop the uid transition itself; no-new-privileges
+         * does, so user code cannot become uid 0 inside the sandbox.
+         */
+        "--security-opt",
+        "no-new-privileges",
+
+        /*
+         * Lets the startup reaper recognise judge-owned containers
+         * without pattern-matching names.
+         */
+        "--label",
+        `${JUDGE_CONTAINER_LABEL}=1`,
 
         "-v",
         `${executionDir}:/sandbox:ro`,
@@ -768,6 +1097,11 @@ export class DockerRunner {
 
   /**
    * Checks Docker's OOMKilled state.
+   *
+   * Authoritative source for MLE. Bounded by DOCKER_AUX_TIMEOUT_MS so
+   * an unresponsive daemon degrades to "not OOM" instead of hanging
+   * the worker; the resulting verdict is then RE rather than MLE,
+   * which is the safe direction to fail.
    */
   private isOOMKilled(
     containerName: string,
@@ -782,21 +1116,164 @@ export class DockerRunner {
       ]);
 
       let output = "";
+      let done = false;
+
+      const finish = (value: boolean) => {
+        if (done) {
+          return;
+        }
+
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+
+      const timer = setTimeout(() => {
+        try {
+          inspect.kill("SIGKILL");
+        } catch {
+          // Already gone.
+        }
+
+        finish(false);
+      }, DOCKER_AUX_TIMEOUT_MS);
 
       inspect.stdout.on("data", (data) => {
         output += data.toString();
       });
 
       inspect.on("error", () => {
-        resolve(false);
+        finish(false);
       });
 
       inspect.on("close", () => {
-        resolve(
-          output.trim() === "true",
+        finish(output.trim() === "true");
+      });
+    });
+  }
+
+  /**
+   * Removes every sandbox container left behind by a previous worker
+   * process. `finally` blocks do not run when a process is SIGKILLed
+   * or its host dies, so without this a crash leaks containers until
+   * the host runs out of resources.
+   *
+   * Scoped strictly to containers carrying this judge's own label, so
+   * unrelated containers on a shared host are never touched.
+   *
+   * ASSUMES one judge worker per Docker host: it cannot distinguish a
+   * dead worker's containers from a live sibling replica's. Run it at
+   * startup only, and do not enable it on a host running several
+   * worker replicas against the same daemon.
+   */
+  async reapOrphanedSandboxes(): Promise<string[]> {
+    const names = await new Promise<string[]>((resolve) => {
+      const list = spawn("docker", [
+        "ps",
+        "-a",
+        "--filter",
+        `label=${JUDGE_CONTAINER_LABEL}=1`,
+        "--format",
+        "{{.Names}}",
+      ]);
+
+      let output = "";
+      let done = false;
+
+      const finish = (value: string[]) => {
+        if (done) {
+          return;
+        }
+
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+
+      const timer = setTimeout(() => {
+        try {
+          list.kill("SIGKILL");
+        } catch {
+          // Already gone.
+        }
+
+        finish([]);
+      }, DOCKER_AUX_TIMEOUT_MS);
+
+      list.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+
+      list.on("error", () => {
+        finish([]);
+      });
+
+      list.on("close", () => {
+        finish(
+          output
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
         );
       });
     });
+
+    const reaped: string[] = [];
+
+    for (const name of names) {
+      try {
+        await this.removeContainer(name);
+        reaped.push(name);
+      } catch (error) {
+        console.error(
+          `[Reaper] Failed to remove ${name}`,
+          error,
+        );
+      }
+    }
+
+    /*
+     * Host-side execution directories are named after the container's
+     * execution id, so anything still present belongs to a dead run.
+     *
+     * Clear the CONTENTS rather than baseDir itself: in the deployed
+     * topology JUDGE_WORK_DIR is a bind mount, and removing a mount
+     * point fails with EBUSY — which silently defeated this cleanup and
+     * let stale directories accumulate indefinitely.
+     */
+    let entries: string[] = [];
+
+    try {
+      entries = await fs.readdir(this.baseDir);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+
+      /*
+       * Nothing staged yet on a first run.
+       */
+      if (code !== "ENOENT") {
+        console.error(
+          "[Reaper] Failed to list execution directories",
+          error,
+        );
+      }
+    }
+
+    for (const entry of entries) {
+      try {
+        await fs.rm(path.join(this.baseDir, entry), {
+          recursive: true,
+          force: true,
+        });
+      } catch (error) {
+        console.error(
+          `[Reaper] Failed to remove execution directory ${entry}`,
+          error,
+        );
+      }
+    }
+
+    return reaped;
   }
 
   /**
@@ -818,6 +1295,30 @@ export class DockerRunner {
 
       let stdout = "";
       let stderr = "";
+      let done = false;
+
+      /*
+       * Cleanup must not be able to hang a shutdown path.
+       */
+      const timer = setTimeout(() => {
+        if (done) {
+          return;
+        }
+
+        done = true;
+
+        try {
+          remove.kill("SIGKILL");
+        } catch {
+          // Already gone.
+        }
+
+        reject(
+          new Error(
+            `docker rm timed out for ${containerName}`,
+          ),
+        );
+      }, DOCKER_AUX_TIMEOUT_MS);
 
       remove.stdout.on("data", (data) => {
         stdout += data.toString();
@@ -828,21 +1329,22 @@ export class DockerRunner {
       });
 
       remove.on("error", (error) => {
+        if (done) {
+          return;
+        }
+
+        done = true;
+        clearTimeout(timer);
         reject(error);
       });
 
       remove.on("close", (exitCode) => {
-        console.log(
-          `[Docker] rm exitCode=${exitCode}`,
-        );
+        if (done) {
+          return;
+        }
 
-        console.log(
-          `[Docker] stdout=${stdout}`,
-        );
-
-        console.log(
-          `[Docker] stderr=${stderr}`,
-        );
+        done = true;
+        clearTimeout(timer);
 
         /*
          * Container already disappeared.
@@ -859,7 +1361,7 @@ export class DockerRunner {
 
         reject(
           new Error(
-            `docker rm failed with exit code ${exitCode}: ${stderr}`,
+            `docker rm failed with exit code ${exitCode}: ${stderr.trim()}`,
           ),
         );
       });
