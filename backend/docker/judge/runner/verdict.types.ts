@@ -1,0 +1,84 @@
+// export type Verdict =
+//   | "AC"
+//   | "WA"
+//   | "TLE"
+//   | "MLE"
+//   | "RE";
+
+// export interface JudgeResult {
+//   verdict: Verdict;
+
+//   stdout: string;
+//   stderr: string;
+
+//   exitCode: number | null;
+
+//   executionTimeMs: number;
+// }
+
+// export type Verdict =
+//   | "AC"
+//   | "WA"
+//   | "TLE"
+//   | "MLE"
+//   | "RE";
+
+// export interface TestResult {
+//   testCaseId: string;
+
+//   verdict: Verdict;
+
+//   stdout: string;
+//   stderr: string;
+
+//   exitCode: number | null;
+
+//   executionTimeMs: number;
+// }
+
+// export interface JudgeResult {
+//   verdict: Verdict;
+
+//   passedTestCases: number;
+//   totalTestCases: number;
+
+//   failedTestCaseId: string | null;
+
+//   executionTimeMs: number;
+
+//   testResults: TestResult[];
+// }
+
+export type Verdict =
+  | "AC"
+  | "WA"
+  | "TLE"
+  | "MLE"
+  | "RE"
+  | "OLE";
+
+export interface TestResult {
+  testCaseId: string;
+
+  verdict: Verdict;
+
+  stdout: string;
+  stderr: string;
+
+  exitCode: number | null;
+
+  executionTimeMs: number;
+}
+
+export interface JudgeResult {
+  verdict: Verdict;
+
+  passedTestCases: number;
+  totalTestCases: number;
+
+  failedTestCaseId: string | null;
+
+  executionTimeMs: number;
+
+  testResults: TestResult[];
+}

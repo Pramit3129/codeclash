@@ -18,6 +18,22 @@ enum AuthProvider {
   GITHUB
 }
 
+enum SubmissionLanguage {
+  PYTHON
+  JAVA
+  CPP
+  JAVASCRIPT
+}
+
+enum SubmissionVerdict {
+  AC
+  WA
+  TLE
+  MLE
+  RE
+  OLE
+}
+
 model User {
   id String @id @default(cuid())
 
@@ -33,6 +49,8 @@ model User {
 
   accounts AuthAccount[]
   sessions Session[]
+
+  submissions Submission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -128,12 +146,13 @@ model Problem {
   difficulty    Difficulty
   timeLimitMs   Int
   memoryLimitMb Int
-  starterCode   Json @default("{}")
+  starterCode   Json       @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  testCases TestCase[]
+  testCases   TestCase[]
+  submissions Submission[]
 }
 
 model TestCase {
@@ -145,4 +164,62 @@ model TestCase {
   isSample       Boolean @default(false)
 
   problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  submissionResults SubmissionTestResult[]
+
+  @@unique([problemId, ordinal])
+  @@index([problemId])
+}
+
+model Submission {
+  id String @id @default(cuid())
+
+  userId    String
+  problemId String
+
+  language   SubmissionLanguage
+  sourceCode String
+
+  verdict SubmissionVerdict?
+
+  passedTestCases Int @default(0)
+  totalTestCases  Int @default(0)
+
+  failedTestCaseId String?
+
+  executionTimeMs Float?
+
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  testResults SubmissionTestResult[]
+
+  @@index([userId, createdAt])
+  @@index([problemId, createdAt])
+  @@index([verdict])
+}
+
+model SubmissionTestResult {
+  id String @id @default(cuid())
+
+  submissionId String
+  testCaseId   String
+
+  verdict SubmissionVerdict
+
+  stdout String @default("")
+  stderr String @default("")
+
+  exitCode Int?
+
+  executionTimeMs Float
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  testCase   TestCase   @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, testCaseId])
+  @@index([submissionId])
+  @@index([testCaseId])
 }
