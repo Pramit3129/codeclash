@@ -154,6 +154,83 @@ describe.each(languages)("%s", (language) => {
   );
 });
 
+/**
+ * Reference-solution regression.
+ *
+ * Pins the canonical "Sum of Two Numbers" Python solution to AC 5/5,
+ * asserting per-test output rather than only the aggregate verdict.
+ *
+ * The expected outputs mirror the verified production run of submission
+ * cmsu9bznh0003pk01i4tmiyw6 (5, 30, 300, -5, 1000000), so a regression
+ * here corresponds to a real user-visible break.
+ */
+describe("Sum of Two Numbers - Python reference solution", () => {
+  const REFERENCE = `a, b = map(int, input().split())\nprint(a + b)`;
+
+  const productionShapedCases: TestCase[] = [
+    { id: "p1", stdin: "2 3\n", expectedOutput: "5\n", isSample: true },
+    { id: "p2", stdin: "10 20\n", expectedOutput: "30\n", isSample: false },
+    { id: "p3", stdin: "100 200\n", expectedOutput: "300\n", isSample: false },
+    { id: "p4", stdin: "-10 5\n", expectedOutput: "-5\n", isSample: false },
+    { id: "p5", stdin: "999999 1\n", expectedOutput: "1000000\n", isSample: false },
+  ];
+
+  test(
+    "is AC with 5/5 test cases and correct per-test output",
+    async () => {
+      const result = await judge.judge(
+        {
+          language: "python",
+          sourceCode: REFERENCE,
+          stdin: "",
+          timeLimitMs: 1_000,
+          memoryLimitMb: 256,
+        },
+        productionShapedCases,
+      );
+
+      expect(result.verdict).toBe("AC");
+      expect(result.passedTestCases).toBe(5);
+      expect(result.totalTestCases).toBe(5);
+      expect(result.failedTestCaseId).toBeNull();
+      expect(result.testResults).toHaveLength(5);
+
+      const expectedStdout = ["5", "30", "300", "-5", "1000000"] as const;
+
+      result.testResults.forEach((testResult, i) => {
+        expect(testResult.verdict).toBe("AC");
+        expect(testResult.exitCode).toBe(0);
+        expect(testResult.stdout.trim()).toBe(expectedStdout[i]!);
+        expect(testResult.stderr).toBe("");
+      });
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  test(
+    "runs within the production 1000ms per-test limit",
+    async () => {
+      const result = await judge.judge(
+        {
+          language: "python",
+          sourceCode: REFERENCE,
+          stdin: "",
+          timeLimitMs: 1_000,
+          memoryLimitMb: 256,
+        },
+        productionShapedCases,
+      );
+
+      expect(result.verdict).toBe("AC");
+
+      for (const testResult of result.testResults) {
+        expect(testResult.executionTimeMs).toBeLessThan(1_000);
+      }
+    },
+    CASE_TIMEOUT_MS,
+  );
+});
+
 describe("judge service edge cases", () => {
   test(
     "a problem with zero test cases is vacuously AC",

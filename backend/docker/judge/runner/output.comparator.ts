@@ -7,7 +7,15 @@ export class OutputComparator {
       this.normalize(expected);
   }
 
-  private normalize(
+  /**
+   * Collapses a program's output to its canonical comparable form:
+   * leading/trailing whitespace removed and every internal whitespace
+   * run (spaces, tabs, LF, CRLF) reduced to a single space.
+   *
+   * Public only so it can be unit tested directly; `compare` is the
+   * intended entry point.
+   */
+  normalize(
     output: string,
   ): string {
     return output

@@ -215,7 +215,18 @@ export class JudgeService {
     }
   }
 
-  private classifyExecution(
+  /**
+   * Maps one execution outcome to a failure verdict, or null when the
+   * program ran cleanly and its output still needs comparing.
+   *
+   * Precedence matters: the limits we enforce ourselves (TLE, OLE) are
+   * decided before the exit code, because we SIGKILL those and the
+   * resulting 137 would otherwise read as RE.
+   *
+   * Pure — no Docker, no I/O. Public only so it can be unit tested
+   * directly.
+   */
+  classifyExecution(
     result: Awaited<
       ReturnType<DockerRunner["execute"]>
     >,
