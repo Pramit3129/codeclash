@@ -89,13 +89,16 @@ export type SubmissionVerdict =
   | "SE"
   | null;
 
+/**
+ * Mirrors SubmissionTestResult in the backend schema. There is no `passed`
+ * column — a test passed when its verdict is "AC".
+ */
 export interface TestResult {
   testCaseId: string;
-  passed: boolean;
   verdict: SubmissionVerdict;
   stdout: string;
   stderr: string;
-  exitCode: number;
+  exitCode: number | null;
   executionTimeMs: number;
 }
 

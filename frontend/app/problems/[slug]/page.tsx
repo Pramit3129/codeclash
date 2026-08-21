@@ -154,6 +154,11 @@ function verdictColor(verdict: string | null): string {
   }
 }
 
+/** Judge timings arrive as raw floats (102.41096099931747) — round for display. */
+function formatMs(ms: number): string {
+  return ms < 10 ? `${ms.toFixed(1)}ms` : `${Math.round(ms)}ms`;
+}
+
 function StatusIcon({ status, verdict }: { status: string; verdict: string | null }) {
   if (status === "QUEUED" || status === "RUNNING") {
     return <Loader2 className="w-4 h-4 animate-spin text-accent" />;
@@ -215,28 +220,32 @@ function SubmissionCard({
 
       {expanded && testResults.length > 0 && (
         <div className="border-t border-line px-4 py-3 space-y-1.5">
-          {testResults.map((tr: TestResult, i: number) => (
-            <div
-              key={tr.testCaseId ?? i}
-              className="flex items-center gap-2.5 text-xs"
-            >
-              {tr.passed ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
-              ) : (
-                <XCircle className="w-3.5 h-3.5 text-danger shrink-0" />
-              )}
-              <span className="text-ink-2">Test {i + 1}</span>
-              <span className={`font-medium ${tr.passed ? "text-success" : "text-danger"}`}>
-                {tr.passed ? "Passed" : verdictLabel(tr.verdict)}
-              </span>
-              {tr.executionTimeMs != null && (
-                <span className="ml-auto text-ink-3 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {tr.executionTimeMs}ms
+          {testResults.map((tr: TestResult, i: number) => {
+            const passed = tr.verdict === "AC";
+
+            return (
+              <div
+                key={tr.testCaseId ?? i}
+                className="flex items-center gap-2.5 text-xs"
+              >
+                {passed ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                ) : (
+                  <XCircle className="w-3.5 h-3.5 text-danger shrink-0" />
+                )}
+                <span className="text-ink-2">Test {i + 1}</span>
+                <span className={`font-medium ${passed ? "text-success" : "text-danger"}`}>
+                  {passed ? "Passed" : verdictLabel(tr.verdict)}
                 </span>
-              )}
-            </div>
-          ))}
+                {tr.executionTimeMs != null && (
+                  <span className="ml-auto text-ink-3 flex items-center gap-1 font-mono tabular-nums">
+                    <Clock className="w-3 h-3" />
+                    {formatMs(tr.executionTimeMs)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
