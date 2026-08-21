@@ -9,6 +9,13 @@ import type {
   JudgeVerdictEvent,
 } from "./types";
 
+const LANGUAGE_API_MAP: Record<Language, string> = {
+  PYTHON: "python",
+  JAVASCRIPT: "javascript",
+  JAVA: "java",
+  CPP: "cpp",
+};
+
 // ─── REST API ───────────────────────────────────────────────────────
 
 export async function createSubmission(
@@ -18,7 +25,11 @@ export async function createSubmission(
 ): Promise<CreateSubmissionResponse> {
   return apiJson<CreateSubmissionResponse>("/api/submissions", {
     method: "POST",
-    body: JSON.stringify({ problemId, language, sourceCode }),
+    body: JSON.stringify({
+      problemId,
+      language: LANGUAGE_API_MAP[language],
+      sourceCode,
+    }),
   });
 }
 
