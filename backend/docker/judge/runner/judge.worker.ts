@@ -166,7 +166,7 @@ export const judgeWorker = new Worker(
         result,
       });
 
-      publishEvent(1, submissionId, result);
+      await publishEvent(1, submissionId, result);
 
     } catch (error) {
       throw new InfrastructureError(

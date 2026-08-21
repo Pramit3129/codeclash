@@ -188,7 +188,8 @@ export class JudgeService {
         passedTestCases++;
 
         //publish every test case result
-        publishEvent(2, submissionId, {
+        
+        await publishEvent(2, submissionId, {
           testCaseId: testCase.id,
           passedTestCases,
           totalTestCases: testCases.length,

@@ -21,3 +21,7 @@ redis.on("error", (err) => {
 export async function connectRedis() {
   await redis.ping();
 }
+
+export function createSubscriber() {
+  return redis.duplicate();
+}
