@@ -1,7 +1,9 @@
 import { apiJson } from "@/lib/auth/apiClient";
+import { API_URL } from "@/lib/auth/config";
 import { tokenStore } from "@/lib/auth/tokenStore";
 import type {
   Language,
+  Submission,
   CreateSubmissionResponse,
   GetSubmissionResponse,
   JudgeProgressEvent,
@@ -50,10 +52,12 @@ export interface JudgeStreamCallbacks {
 }
 
 /**
- * Opens an SSE connection to the judge stream via the Next.js proxy route.
+ * Opens an SSE connection to the judge stream on the backend.
  * Returns a cleanup function to close the connection.
  *
- * Uses a same-origin proxy to avoid CORS issues with cross-origin EventSource.
+ * EventSource cannot set an Authorization header, so the access token is
+ * passed as a query parameter. The backend sends CORS headers for this
+ * origin, so the connection is made directly instead of through a proxy.
  */
 export function connectJudgeStream(
   submissionId: string,
@@ -64,10 +68,9 @@ export function connectJudgeStream(
   const params = new URLSearchParams();
   if (token) params.set("token", token);
 
-  // Route through the Next.js proxy to avoid cross-origin EventSource issues
-  const url = `/api/submissions/${submissionId}/judgeStream?${params.toString()}`;
+  const url = `${API_URL}/api/submissions/${submissionId}/judgeStream?${params.toString()}`;
 
-  const eventSource = new EventSource(url);
+  const eventSource = new EventSource(url, { withCredentials: true });
   let errored = false;
 
   eventSource.onopen = () => {
@@ -101,5 +104,64 @@ export function connectJudgeStream(
 
   return () => {
     eventSource.close();
+  };
+}
+
+/**
+ * Fallback for when the SSE stream is unavailable: polls the durable
+ * submission record until it reaches a terminal state (or the attempt
+ * budget runs out). Returns a cancel function.
+ */
+export function pollSubmission(
+  submissionId: string,
+  onUpdate: (submission: Submission) => void,
+  {
+    intervalMs = 1500,
+    maxAttempts = 40,
+    onExhausted,
+  }: {
+    intervalMs?: number;
+    maxAttempts?: number;
+    onExhausted?: () => void;
+  } = {},
+): () => void {
+  let cancelled = false;
+  let attempts = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const tick = async () => {
+    if (cancelled) return;
+    attempts++;
+
+    try {
+      const res = await getSubmission(submissionId);
+      if (cancelled) return;
+      if (res.success) {
+        onUpdate(res.submission);
+        if (
+          res.submission.status === "COMPLETED" ||
+          res.submission.status === "FAILED"
+        ) {
+          return;
+        }
+      }
+    } catch {
+      // Transient failure — keep polling until the budget is spent
+    }
+
+    if (cancelled) return;
+
+    if (attempts < maxAttempts) {
+      timer = setTimeout(tick, intervalMs);
+    } else {
+      onExhausted?.();
+    }
+  };
+
+  void tick();
+
+  return () => {
+    cancelled = true;
+    if (timer) clearTimeout(timer);
   };
 }

@@ -21,8 +21,8 @@ import remarkGfm from "remark-gfm";
 import { getProblemBySlug } from "@/lib/problems/api";
 import {
   createSubmission,
-  getSubmission,
   connectJudgeStream,
+  pollSubmission,
 } from "@/lib/problems/submissions";
 import type {
   ProblemDetails,
@@ -457,31 +457,28 @@ export default function ProblemDetailPage() {
           cleanupSseRef.current = null;
         },
         onError: () => {
-          // SSE failed (CORS, auth, etc.) — fetch durable state as fallback
+          // SSE failed (CORS, auth, proxy, etc.) — poll durable state instead
           cleanupSseRef.current?.();
-          cleanupSseRef.current = null;
 
-          getSubmission(submission.id)
-            .then((res) => {
-              if (res.success) {
-                setActiveSubmission(res.submission);
-                if (
-                  res.submission.status === "COMPLETED" ||
-                  res.submission.status === "FAILED"
-                ) {
-                  setPastSubmissions((prev) => [
-                    { submission: res.submission, expanded: false },
-                    ...prev,
-                  ]);
-                }
-              }
-            })
-            .catch(() => {
-              // Ignore fetch errors during recovery
-            })
-            .finally(() => {
+          const cancelPoll = pollSubmission(submission.id, (updated) => {
+            setActiveSubmission(updated);
+
+            if (updated.status === "COMPLETED" || updated.status === "FAILED") {
+              setPastSubmissions((prev) => [
+                { submission: updated, expanded: false },
+                ...prev,
+              ]);
               setIsSubmitting(false);
-            });
+              cleanupSseRef.current = null;
+            }
+          }, {
+            onExhausted: () => {
+              setIsSubmitting(false);
+              cleanupSseRef.current = null;
+            },
+          });
+
+          cleanupSseRef.current = cancelPoll;
         },
       });
 
