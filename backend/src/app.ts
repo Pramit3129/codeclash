@@ -10,6 +10,7 @@ import { readyRouter } from "./routes/ready.route.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { problemRouter } from "./modules/problems/problem.route.ts";
 import { submissionRouter } from "./modules/submissions/submission.route.ts";
+import { runRouter } from "./modules/run/run.route.ts";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.ts";
 
 const app = express();
@@ -56,6 +57,7 @@ app.use("/readyz", readyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/problems", problemRouter);
 app.use("/api/submissions", submissionRouter);
+app.use("/api/run", runRouter);
 
 
 // 404 + centralized error handling (must be last).

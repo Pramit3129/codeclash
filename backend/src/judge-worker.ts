@@ -3,6 +3,10 @@ import {
   reapOnStartup,
   shutdownJudgeWorker,
 } from "../docker/judge/runner/queue/judge.worker.ts";
+import {
+  runWorker,
+  shutdownRunWorker,
+} from "../docker/judge/runner/queue/run.worker.ts";
 import { redis } from "./lib/redis.ts";
 import { logger } from "./lib/logger.ts";
 
@@ -39,6 +43,7 @@ async function shutdown(signal: string): Promise<void> {
   deadline.unref();
 
   try {
+    await shutdownRunWorker();
     await shutdownJudgeWorker();
     await redis.quit();
 
@@ -74,7 +79,10 @@ void (async () => {
   await reapOnStartup();
 
   logger.info(
-    { concurrency: judgeWorker.opts.concurrency },
+    {
+      concurrency: judgeWorker.opts.concurrency,
+      runConcurrency: runWorker.opts.concurrency,
+    },
     "judge worker ready",
   );
 })();
