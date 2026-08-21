@@ -1,23 +1,13 @@
-/**
- * Concurrent-submission isolation.
- *
- * Each submission is given test cases whose ids and expected outputs are
- * unique to it, so any bleed between simultaneously running sandboxes
- * shows up as a wrong verdict or a foreign test id rather than passing
- * silently.
- *
- * Requires Docker and the four judge images.
- */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
-import { DockerRunner, JUDGE_CONTAINER_LABEL } from "../docker.runner.ts";
-import { OutputComparator } from "../output.comparator.ts";
-import { JudgeService } from "../judge.service.ts";
+import { DockerRunner, JUDGE_CONTAINER_LABEL } from "../utils/docker.runner.ts";
+import { OutputComparator } from "../utils/output.comparator.ts";
+import { JudgeService } from "../services/judge.service.ts";
 
-import type { SupportedLanguage } from "../runner.type.ts";
-import type { TestCase } from "../test-case.type.ts";
-import type { Verdict } from "../verdict.types.ts";
+import type { SupportedLanguage } from "../types/runner.type.ts";
+import type { TestCase } from "../types/test-case.type.ts";
+import type { Verdict } from "../types/verdict.types.ts";
 
 const judge = new JudgeService(new DockerRunner(), new OutputComparator());
 
@@ -32,10 +22,6 @@ public class Main { public static void main(String[] a){ Scanner s=new Scanner(S
 int main(){ long long a,b; std::cin>>a>>b; std::cout<<a+b<<std::endl; }`,
 };
 
-/**
- * A submission that tries to take the judge down with it: rewrites the
- * PID file, spawns a survivor child, and attacks its own PID 1.
- */
 const HOSTILE = `
 import glob, subprocess, os
 for f in glob.glob("/tmp/exec-*.pid"):
@@ -51,7 +37,6 @@ except Exception:
 while True:
     pass`;
 
-/** Test cases unique to one submission, keyed by a per-submission marker. */
 function casesFor(marker: number): TestCase[] {
   return [1, 2, 3].map((n) => ({
     id: `c${marker}-${n}`,
@@ -84,6 +69,7 @@ async function runAll(jobs: Job[]) {
     jobs.map(async (job) => ({
       job,
       result: await judge.judge(
+        job.id,
         {
           language: job.language,
           sourceCode: job.sourceCode,
@@ -138,10 +124,7 @@ describe("concurrent submissions", () => {
         expect(result.passedTestCases).toBe(3);
 
         for (const testResult of result.testResults) {
-          // Belongs to this submission...
           expect(testResult.testCaseId.startsWith(`c${job.marker}-`)).toBe(true);
-
-          // ...and is not shared with any other submission's results.
           expect(seenTestCaseIds.has(testResult.testCaseId)).toBe(false);
           seenTestCaseIds.add(testResult.testCaseId);
         }

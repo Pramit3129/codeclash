@@ -1,4 +1,4 @@
-import type { Verdict } from "./verdict.types";
+import type { Verdict } from "./verdict.types.ts";
 
 export type SupportedLanguage =
   | "python"
@@ -6,12 +6,10 @@ export type SupportedLanguage =
   | "java"
   | "cpp";
 
-
 export interface RunRequest {
   language: SupportedLanguage;
   sourceCode: string;
   stdin: string;
-
   timeLimitMs: number;
   memoryLimitMb: number;
 }
@@ -19,9 +17,7 @@ export interface RunRequest {
 export interface RunResult {
   stdout: string;
   stderr: string;
-
   exitCode: number | null;
-
   timedOut: boolean;
   memoryExceeded: boolean;
   outputExceeded: boolean;
@@ -29,18 +25,11 @@ export interface RunResult {
 
 export interface RunProgress {
   totalTestCases: number;
-
   verdict: Verdict;
-
   testCaseId: string;
-
   passedTestCases: number;
-
   stdout: string;
   stderr: string;
-
   exitCode: number | null;
-
   executionTimeMs: number;
 }
-  

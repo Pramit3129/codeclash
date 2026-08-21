@@ -24,8 +24,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PrismaClient } from "@prisma/client";
 
-import { SubmissionRepository } from "../submission.repository.ts";
-import type { JudgeResult, TestResult } from "../verdict.types.ts";
+import { SubmissionRepository } from "../repositories/submission.repository.ts";
+import type { JudgeResult, TestResult } from "../types/verdict.types.ts";
 
 const TEST_DATABASE_URL = process.env.JUDGE_TEST_DATABASE_URL;
 

@@ -8,10 +8,10 @@ import { asyncHandler } from "../../utils/http.js";
 import {
   createSubmission,
   getSubmission,
+  streamSubmission,
 } from "./submission.controller.js";
 
-export const submissionRouter =
-  express.Router();
+export const submissionRouter = express.Router();
 
 /*
  * Every accepted submission spawns a Docker container and occupies the
@@ -36,10 +36,12 @@ submissionRouter.post(
   asyncHandler(createSubmission),
 );
 
-
-submissionRouter.get("/:id/judgeStream", authenticate, authorize("USER", "ADMIN"), (req, res) => {
-  
-})
+submissionRouter.get(
+  "/:id/judgeStream",
+  authenticate,
+  authorize("USER", "ADMIN"),
+  asyncHandler(streamSubmission),
+);
 
 submissionRouter.get(
   "/:id",

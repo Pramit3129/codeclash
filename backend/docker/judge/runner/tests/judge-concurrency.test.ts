@@ -10,7 +10,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
-import { resolveConcurrency } from "../judge.concurrency.ts";
+import { resolveConcurrency } from "../utils/judge.concurrency.ts";
 
 describe("resolveConcurrency", () => {
   describe("falls back to 1 for anything that is not a positive integer", () => {

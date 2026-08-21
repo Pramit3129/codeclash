@@ -6,12 +6,12 @@
  */
 import { describe, expect, test } from "bun:test";
 
-import { DockerRunner } from "../docker.runner.ts";
-import { OutputComparator } from "../output.comparator.ts";
-import { JudgeService } from "../judge.service.ts";
+import { DockerRunner } from "../utils/docker.runner.ts";
+import { OutputComparator } from "../utils/output.comparator.ts";
+import { JudgeService } from "../services/judge.service.ts";
 
-import type { SupportedLanguage } from "../runner.type.ts";
-import type { TestCase } from "../test-case.type.ts";
+import type { SupportedLanguage } from "../types/runner.type.ts";
+import type { TestCase } from "../types/test-case.type.ts";
 
 const judge = new JudgeService(new DockerRunner(), new OutputComparator());
 
@@ -82,6 +82,7 @@ function run(
   over: { timeLimitMs?: number; memoryLimitMb?: number } = {},
 ) {
   return judge.judge(
+    "sub_test",
     {
       language,
       sourceCode,
@@ -179,6 +180,7 @@ describe("Sum of Two Numbers - Python reference solution", () => {
     "is AC with 5/5 test cases and correct per-test output",
     async () => {
       const result = await judge.judge(
+        "sub_test",
         {
           language: "python",
           sourceCode: REFERENCE,
@@ -211,6 +213,7 @@ describe("Sum of Two Numbers - Python reference solution", () => {
     "runs within the production 1000ms per-test limit",
     async () => {
       const result = await judge.judge(
+        "sub_test",
         {
           language: "python",
           sourceCode: REFERENCE,
@@ -236,6 +239,7 @@ describe("judge service edge cases", () => {
     "a problem with zero test cases is vacuously AC",
     async () => {
       const result = await judge.judge(
+        "sub_test",
         {
           language: "python",
           sourceCode: "print(1)",
@@ -306,6 +310,7 @@ while True:
     async () => {
       await expect(
         judge.judge(
+          "sub_test",
           {
             // "js" is an API-level alias that must be normalised before
             // reaching the judge; it is not a runner language.

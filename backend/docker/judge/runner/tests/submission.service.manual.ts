@@ -1,11 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 
-import { DockerRunner } from "../docker.runner.ts";
-import { OutputComparator } from "../output.comparator.ts";
-import { JudgeService } from "../judge.service.ts";
-import { SubmissionService } from "../submission.service.ts";
-import { SubmissionRepository } from "../submission.repository.ts";
-import { ProblemRepository } from "../problem.repository.ts";
+import { DockerRunner } from "../utils/docker.runner.ts";
+import { OutputComparator } from "../utils/output.comparator.ts";
+import { JudgeService } from "../services/judge.service.ts";
+import { SubmissionService } from "../services/submission.service.ts";
+import { ProblemRepository } from "../repositories/problem.repository.ts";
+import { SubmissionRepository } from "../repositories/submission.repository.ts";
 
 const prisma =
   new PrismaClient();

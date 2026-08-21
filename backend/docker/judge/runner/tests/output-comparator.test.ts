@@ -8,7 +8,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
-import { OutputComparator } from "../output.comparator.ts";
+import { OutputComparator } from "../utils/output.comparator.ts";
 
 const comparator = new OutputComparator();
 const n = (s: string) => comparator.normalize(s);

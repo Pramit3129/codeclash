@@ -14,13 +14,15 @@
 import { describe, expect, test, afterAll } from "bun:test";
 import { spawnSync } from "node:child_process";
 
-import {
-  DockerRunner,
-  JUDGE_CONTAINER_LABEL,
-  type Sandbox,
-} from "../docker.runner.ts";
+import { DockerRunner, JUDGE_CONTAINER_LABEL } from "../utils/docker.runner.ts";
+import { OutputComparator } from "../utils/output.comparator.ts";
+import { JudgeService } from "../services/judge.service.ts";
 
-import type { RunRequest } from "../runner.type.ts";
+import type { SupportedLanguage } from "../types/runner.type.ts";
+import type { TestCase } from "../types/test-case.type.ts";
+
+import type { Sandbox } from "../utils/docker.runner.ts";
+import type { RunRequest } from "../types/runner.type.ts";
 
 const runner = new DockerRunner();
 

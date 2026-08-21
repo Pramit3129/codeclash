@@ -2,7 +2,7 @@ import {
   judgeWorker,
   reapOnStartup,
   shutdownJudgeWorker,
-} from "../docker/judge/runner/judge.worker.ts";
+} from "../docker/judge/runner/queue/judge.worker.ts";
 import { redis } from "./lib/redis.ts";
 import { logger } from "./lib/logger.ts";
 

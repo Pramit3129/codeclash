@@ -1,4 +1,4 @@
-import { OutputComparator } from "../output.comparator.ts";
+import { OutputComparator } from "../utils/output.comparator.ts";
 
 const comparator = new OutputComparator();
 
