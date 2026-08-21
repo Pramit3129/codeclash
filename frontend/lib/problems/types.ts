@@ -70,3 +70,73 @@ export const MONACO_LANGUAGE_MAP: Record<Language, string> = {
 };
 
 export const ALL_LANGUAGES: Language[] = ["PYTHON", "JAVASCRIPT", "JAVA", "CPP"];
+
+// ─── Submission Types ───────────────────────────────────────────────
+
+export type SubmissionStatus =
+  | "QUEUED"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED";
+
+export type SubmissionVerdict =
+  | "AC"
+  | "WA"
+  | "TLE"
+  | "RE"
+  | "CE"
+  | "MLE"
+  | "SE"
+  | null;
+
+export interface TestResult {
+  testCaseId: string;
+  passed: boolean;
+  verdict: SubmissionVerdict;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  executionTimeMs: number;
+}
+
+export interface Submission {
+  id: string;
+  problemId: string;
+  language: Language;
+  status: SubmissionStatus;
+  verdict: SubmissionVerdict;
+  totalTestCases: number;
+  passedTestCases: number;
+  testResults: TestResult[];
+  createdAt: string;
+}
+
+export interface CreateSubmissionResponse {
+  success: boolean;
+  submission: Submission;
+}
+
+export interface GetSubmissionResponse {
+  success: boolean;
+  submission: Submission;
+}
+
+export interface JudgeProgressEvent {
+  testCaseId: string;
+  passedTestCases: number;
+  totalTestCases: number;
+  verdict: SubmissionVerdict;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  executionTimeMs: number;
+}
+
+export interface JudgeVerdictEvent {
+  verdict: SubmissionVerdict;
+  passedTestCases: number;
+  totalTestCases: number;
+  failedTestCaseId: string | null;
+  executionTimeMs: number;
+  testResults: TestResult[];
+}
