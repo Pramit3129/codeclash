@@ -180,6 +180,9 @@ function SubmissionCard({
     minute: "2-digit",
   });
 
+  // A freshly queued submission carries no test results yet.
+  const testResults = submission.testResults ?? [];
+
   return (
     <div className="mb-3 rounded-xl border border-line bg-elevated/40 overflow-hidden">
       <button
@@ -196,10 +199,12 @@ function SubmissionCard({
           {submission.passedTestCases}/{submission.totalTestCases} tests
         </span>
         <span className="ml-auto text-xs text-ink-3">
-          {LANGUAGE_LABELS[submission.language] ?? submission.language}
+          {submission.language
+            ? LANGUAGE_LABELS[submission.language] ?? submission.language
+            : null}
         </span>
         <span className="text-xs text-ink-3">{time}</span>
-        {submission.testResults.length > 0 && (
+        {testResults.length > 0 && (
           expanded ? (
             <ChevronDown className="w-4 h-4 text-ink-3" />
           ) : (
@@ -208,9 +213,9 @@ function SubmissionCard({
         )}
       </button>
 
-      {expanded && submission.testResults.length > 0 && (
+      {expanded && testResults.length > 0 && (
         <div className="border-t border-line px-4 py-3 space-y-1.5">
-          {submission.testResults.map((tr: TestResult, i: number) => (
+          {testResults.map((tr: TestResult, i: number) => (
             <div
               key={tr.testCaseId ?? i}
               className="flex items-center gap-2.5 text-xs"

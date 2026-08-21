@@ -99,15 +99,21 @@ export interface TestResult {
   executionTimeMs: number;
 }
 
+/**
+ * Fields marked optional are absent from the 202 response of
+ * POST /api/submissions, which returns a freshly queued submission before
+ * the judge has run. They are filled in by GET /api/submissions/:id and by
+ * the VERDICT event.
+ */
 export interface Submission {
   id: string;
-  problemId: string;
-  language: Language;
+  problemId?: string;
+  language?: Language;
   status: SubmissionStatus;
   verdict: SubmissionVerdict;
   totalTestCases: number;
   passedTestCases: number;
-  testResults: TestResult[];
+  testResults?: TestResult[];
   createdAt: string;
 }
 
