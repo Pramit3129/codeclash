@@ -100,6 +100,8 @@ export interface TestResult {
   stderr: string;
   exitCode: number | null;
   executionTimeMs: number;
+  input?: string;
+  expectedOutput?: string;
 }
 
 /**
@@ -139,6 +141,8 @@ export interface JudgeProgressEvent {
   stderr: string;
   exitCode: number;
   executionTimeMs: number;
+  input?: string;
+  expectedOutput?: string;
 }
 
 export interface JudgeVerdictEvent {

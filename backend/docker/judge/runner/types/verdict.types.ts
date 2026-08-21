@@ -14,6 +14,8 @@ export interface TestResult {
   stderr: string;
   exitCode: number | null;
   executionTimeMs: number;
+  input?: string;
+  expectedOutput?: string;
 }
 
 export interface JudgeResult {

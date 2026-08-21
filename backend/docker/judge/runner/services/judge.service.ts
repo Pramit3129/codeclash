@@ -57,6 +57,21 @@ export class JudgeService {
             stderr: result.stderr,
             exitCode: result.exitCode,
             executionTimeMs,
+            input: testCase.stdin,
+            expectedOutput: testCase.expectedOutput,
+          });
+
+          await publishEvent(2, submissionId, {
+            testCaseId: testCase.id,
+            passedTestCases,
+            totalTestCases: testCases.length,
+            verdict: executionVerdict,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+            executionTimeMs,
+            input: testCase.stdin,
+            expectedOutput: testCase.expectedOutput,
           });
 
           return {
@@ -82,6 +97,21 @@ export class JudgeService {
             stderr: result.stderr,
             exitCode: result.exitCode,
             executionTimeMs,
+            input: testCase.stdin,
+            expectedOutput: testCase.expectedOutput,
+          });
+
+          await publishEvent(2, submissionId, {
+            testCaseId: testCase.id,
+            passedTestCases,
+            totalTestCases: testCases.length,
+            verdict: "WA",
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+            executionTimeMs,
+            input: testCase.stdin,
+            expectedOutput: testCase.expectedOutput,
           });
 
           return {

@@ -32,4 +32,6 @@ export interface RunProgress {
   stderr: string;
   exitCode: number | null;
   executionTimeMs: number;
+  input?: string;
+  expectedOutput?: string;
 }

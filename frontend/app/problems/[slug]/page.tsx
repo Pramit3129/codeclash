@@ -219,29 +219,87 @@ function SubmissionCard({
       </button>
 
       {expanded && testResults.length > 0 && (
-        <div className="border-t border-line px-4 py-3 space-y-1.5">
+        <div className="border-t border-line px-4 py-3 space-y-2.5">
           {testResults.map((tr: TestResult, i: number) => {
             const passed = tr.verdict === "AC";
 
             return (
               <div
                 key={tr.testCaseId ?? i}
-                className="flex items-center gap-2.5 text-xs"
+                className={`rounded-xl p-3 text-xs transition-colors ${
+                  passed
+                    ? "bg-surface/50 border border-line/50"
+                    : "bg-danger/5 border border-danger/25"
+                }`}
               >
-                {passed ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
-                ) : (
-                  <XCircle className="w-3.5 h-3.5 text-danger shrink-0" />
-                )}
-                <span className="text-ink-2">Test {i + 1}</span>
-                <span className={`font-medium ${passed ? "text-success" : "text-danger"}`}>
-                  {passed ? "Passed" : verdictLabel(tr.verdict)}
-                </span>
-                {tr.executionTimeMs != null && (
-                  <span className="ml-auto text-ink-3 flex items-center gap-1 font-mono tabular-nums">
-                    <Clock className="w-3 h-3" />
-                    {formatMs(tr.executionTimeMs)}
+                <div className="flex items-center gap-2.5">
+                  {passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-danger shrink-0" />
+                  )}
+                  <span className="text-ink-2 font-medium">Test {i + 1}</span>
+                  <span
+                    className={`font-semibold ${
+                      passed ? "text-success" : "text-danger"
+                    }`}
+                  >
+                    {passed ? "Passed" : verdictLabel(tr.verdict)}
                   </span>
+                  {tr.executionTimeMs != null && (
+                    <span className="ml-auto text-ink-3 flex items-center gap-1 font-mono tabular-nums">
+                      <Clock className="w-3.5 h-3.5" />
+                      {formatMs(tr.executionTimeMs)}
+                    </span>
+                  )}
+                </div>
+
+                {!passed && (tr.input || tr.expectedOutput || tr.stdout || tr.stderr) && (
+                  <div className="mt-3 space-y-2 pt-2.5 border-t border-danger/15 font-mono text-[12px]">
+                    {tr.input != null && (
+                      <div className="bg-surface/90 rounded-lg p-2.5 border border-line">
+                        <div className="text-[10px] font-sans font-semibold uppercase tracking-wider text-ink-3 mb-1">
+                          Input
+                        </div>
+                        <pre className="whitespace-pre-wrap break-words text-ink leading-relaxed">
+                          {tr.input.trim() || "<empty>"}
+                        </pre>
+                      </div>
+                    )}
+
+                    {tr.expectedOutput != null && (
+                      <div className="bg-surface/90 rounded-lg p-2.5 border border-line">
+                        <div className="text-[10px] font-sans font-semibold uppercase tracking-wider text-ink-3 mb-1">
+                          Expected Output
+                        </div>
+                        <pre className="whitespace-pre-wrap break-words text-ink leading-relaxed">
+                          {tr.expectedOutput.trim() || "<empty>"}
+                        </pre>
+                      </div>
+                    )}
+
+                    {tr.stdout ? (
+                      <div className="bg-surface/90 rounded-lg p-2.5 border border-line">
+                        <div className="text-[10px] font-sans font-semibold uppercase tracking-wider text-ink-3 mb-1">
+                          Your Output
+                        </div>
+                        <pre className="whitespace-pre-wrap break-words text-ink leading-relaxed">
+                          {tr.stdout.trim()}
+                        </pre>
+                      </div>
+                    ) : null}
+
+                    {tr.stderr ? (
+                      <div className="bg-danger/10 rounded-lg p-2.5 border border-danger/20 text-danger">
+                        <div className="text-[10px] font-sans font-semibold uppercase tracking-wider text-danger/80 mb-1">
+                          Error Output (stderr)
+                        </div>
+                        <pre className="whitespace-pre-wrap break-words leading-relaxed">
+                          {tr.stderr.trim()}
+                        </pre>
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
             );
@@ -441,30 +499,83 @@ export default function ProblemDetailPage() {
         onProgress: (event) => {
           setActiveSubmission((prev) => {
             if (!prev || prev.id !== submission.id) return prev;
+
+            const newResult: TestResult = {
+              testCaseId: event.testCaseId,
+              verdict: event.verdict,
+              stdout: event.stdout,
+              stderr: event.stderr,
+              exitCode: event.exitCode,
+              executionTimeMs: event.executionTimeMs,
+              input: event.input,
+              expectedOutput: event.expectedOutput,
+            };
+
+            const existingResults = prev.testResults ?? [];
+            const index = existingResults.findIndex(
+              (tr) => tr.testCaseId === event.testCaseId,
+            );
+
+            let updatedResults: TestResult[];
+            if (index >= 0) {
+              updatedResults = [...existingResults];
+              updatedResults[index] = newResult;
+            } else {
+              updatedResults = [...existingResults, newResult];
+            }
+
+            const isFailure = event.verdict !== "AC";
+
             return {
               ...prev,
-              status: "RUNNING",
+              status: isFailure ? "COMPLETED" : "RUNNING",
+              verdict: isFailure ? event.verdict : prev.verdict,
               passedTestCases: event.passedTestCases,
               totalTestCases: event.totalTestCases,
+              testResults: updatedResults,
             };
           });
         },
         onVerdict: (event) => {
-          const finalSubmission: Submission = {
-            ...submission,
-            status: "COMPLETED",
-            verdict: event.verdict,
-            passedTestCases: event.passedTestCases,
-            totalTestCases: event.totalTestCases,
-            testResults: event.testResults,
-          };
+          setActiveSubmission((prev) => {
+            const existingResults = prev?.testResults ?? [];
+            const mergedResults = event.testResults.map((tr) => {
+              const match = existingResults.find(
+                (e) => e.testCaseId === tr.testCaseId,
+              );
+              return {
+                ...tr,
+                input: tr.input ?? match?.input,
+                expectedOutput: tr.expectedOutput ?? match?.expectedOutput,
+              };
+            });
 
-          setActiveSubmission(finalSubmission);
-          setPastSubmissions((prev) => [
-            { submission: finalSubmission, expanded: false },
-            ...prev,
-          ]);
-          setIsSubmitting(false);
+            const finalSubmission: Submission = {
+              ...(prev ?? submission),
+              status: "COMPLETED",
+              verdict: event.verdict,
+              passedTestCases: event.passedTestCases,
+              totalTestCases: event.totalTestCases,
+              testResults: mergedResults,
+            };
+
+            setPastSubmissions((past) => {
+              const exists = past.some(
+                (entry) => entry.submission.id === finalSubmission.id,
+              );
+              if (exists) {
+                return past.map((entry) =>
+                  entry.submission.id === finalSubmission.id
+                    ? { submission: finalSubmission, expanded: false }
+                    : entry,
+                );
+              }
+              return [{ submission: finalSubmission, expanded: false }, ...past];
+            });
+
+            setIsSubmitting(false);
+            return finalSubmission;
+          });
 
           // Close SSE
           cleanupSseRef.current?.();
