@@ -11,7 +11,7 @@ import { SubmissionRepository } from "./submission.repository.ts";
 import { LANGUAGE_CONFIG } from "./language.config.ts";
 import { resolveConcurrency } from "./judge.concurrency.ts";
 import type { SupportedLanguage } from "./runner.type.ts";
-import { publishVerdict } from "./pub-sub/publisher.ts";
+import { publishEvent } from "./pub-sub/publisher.ts";
 
 const prisma = new PrismaClient();
 const runner = new DockerRunner();
@@ -139,6 +139,7 @@ export const judgeWorker = new Worker(
 
     try {
       result = await judgeService.judge(
+        submissionId,
         {
           language,
           sourceCode,
@@ -165,7 +166,7 @@ export const judgeWorker = new Worker(
         result,
       });
 
-      publishVerdict(submissionId, result);
+      publishEvent(1, submissionId, result);
 
     } catch (error) {
       throw new InfrastructureError(

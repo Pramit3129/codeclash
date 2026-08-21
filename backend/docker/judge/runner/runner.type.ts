@@ -1,3 +1,5 @@
+import type { Verdict } from "./verdict.types";
+
 export type SupportedLanguage =
   | "python"
   | "javascript"
@@ -24,3 +26,21 @@ export interface RunResult {
   memoryExceeded: boolean;
   outputExceeded: boolean;
 }
+
+export interface RunProgress {
+  totalTestCases: number;
+
+  verdict: Verdict;
+
+  testCaseId: string;
+
+  passedTestCases: number;
+
+  stdout: string;
+  stderr: string;
+
+  exitCode: number | null;
+
+  executionTimeMs: number;
+}
+  

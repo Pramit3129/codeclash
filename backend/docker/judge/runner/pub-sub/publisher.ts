@@ -1,25 +1,28 @@
 import { logger } from "../../../../src/lib/logger.ts";
 import { redis } from "../../../../src/lib/redis.js";
 import type { JudgeResult } from "../verdict.types.ts";
+import type { RunProgress } from "../runner.type.ts";
 
-export const publishVerdict = async (
+export const publishEvent = async (
+  eventType: 1 | 2,
   submissionId: string,
-  result: JudgeResult
+  result: JudgeResult | RunProgress
 ) => {
+  const event = eventType === 1 ? "VERDICT" : "PROGRESS";
   const channel = `submission:${submissionId}`;
 
-  logger.info(
-    { submissionId, result },
-    "Publishing verdict for submission"
+  console.log(
+    { event, submissionId, result },
+    "Publishing event for submission"
   );
 
   const subscriberCount = await redis.publish(
     channel,
-    JSON.stringify({ submissionId, result })
+    JSON.stringify({ event, result })
   );
 
-  logger.info(
+  console.log(
     { submissionId, channel, subscriberCount },
-    "Published verdict for submission"
+    `Published ${event} for submission`
   );
 };

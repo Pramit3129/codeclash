@@ -3,6 +3,7 @@ import { OutputComparator } from "./output.comparator.ts";
 
 import type { RunRequest } from "./runner.type.ts";
 import type { TestCase } from "./test-case.type.ts";
+import { publishEvent } from "./pub-sub/publisher.ts";
 
 import type {
   JudgeResult,
@@ -17,6 +18,7 @@ export class JudgeService {
   ) { }
 
   async judge(
+    submissionId: string,
     request: RunRequest,
     testCases: TestCase[],
   ): Promise<JudgeResult> {
@@ -184,11 +186,26 @@ export class JudgeService {
         });
 
         passedTestCases++;
+
+        //publish every test case result
+        publishEvent(2, submissionId, {
+          testCaseId: testCase.id,
+          passedTestCases,
+          totalTestCases: testCases.length,
+
+          verdict: "AC",
+
+          stdout: result.stdout,
+          stderr: result.stderr,
+
+          exitCode: result.exitCode,
+
+          executionTimeMs,
+        });
       }
 
-      /*
-       * We reached here only if every test passed.
-       */
+      // We reached here only if every test passed.
+
       return {
         verdict: "AC",
 
