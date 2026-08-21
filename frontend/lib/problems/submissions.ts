@@ -1,5 +1,4 @@
 import { apiJson } from "@/lib/auth/apiClient";
-import { API_URL } from "@/lib/auth/config";
 import { tokenStore } from "@/lib/auth/tokenStore";
 import type {
   Language,
@@ -51,11 +50,10 @@ export interface JudgeStreamCallbacks {
 }
 
 /**
- * Opens an SSE connection to the judge stream.
+ * Opens an SSE connection to the judge stream via the Next.js proxy route.
  * Returns a cleanup function to close the connection.
  *
- * Uses EventSource with the auth token appended as a query param
- * (EventSource doesn't support custom headers).
+ * Uses a same-origin proxy to avoid CORS issues with cross-origin EventSource.
  */
 export function connectJudgeStream(
   submissionId: string,
@@ -66,9 +64,11 @@ export function connectJudgeStream(
   const params = new URLSearchParams();
   if (token) params.set("token", token);
 
-  const url = `${API_URL}/api/submissions/${submissionId}/judgeStream?${params.toString()}`;
+  // Route through the Next.js proxy to avoid cross-origin EventSource issues
+  const url = `/api/submissions/${submissionId}/judgeStream?${params.toString()}`;
 
   const eventSource = new EventSource(url);
+  let errored = false;
 
   eventSource.onopen = () => {
     callbacks.onOpen();
@@ -93,6 +93,9 @@ export function connectJudgeStream(
   }) as EventListener);
 
   eventSource.onerror = (error) => {
+    if (errored) return;
+    errored = true;
+    eventSource.close();
     callbacks.onError(error);
   };
 

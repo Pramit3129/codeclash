@@ -457,7 +457,10 @@ export default function ProblemDetailPage() {
           cleanupSseRef.current = null;
         },
         onError: () => {
-          // SSE error — fetch durable state as fallback
+          // SSE failed (CORS, auth, etc.) — fetch durable state as fallback
+          cleanupSseRef.current?.();
+          cleanupSseRef.current = null;
+
           getSubmission(submission.id)
             .then((res) => {
               if (res.success) {
