@@ -4,7 +4,12 @@ import { QueueEvents } from "bullmq";
 import { prisma } from "../../lib/prisma.js";
 import { redis } from "../../lib/redis.js";
 import { logger } from "../../lib/logger.js";
-import { AppError, BadRequestError, NotFoundError } from "../../utils/errors.js";
+import {
+  AppError,
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+} from "../../utils/errors.js";
 
 import {
   RUN_QUEUE_NAME,
@@ -19,7 +24,27 @@ import type {
 
 import type { RunTestCaseInput } from "./run.types.js";
 
-const RUN_WAIT_TIMEOUT_MS = 60_000;
+const RUN_WAIT_TIMEOUT_MS = 30_000;
+
+// Six queued runs at concurrency 1 still land inside the wait ceiling;
+// deeper than that and the tail would only be waiting to time out.
+const MAX_QUEUE_DEPTH = Number(process.env.RUN_MAX_QUEUE_DEPTH ?? 6);
+
+// One in-flight run per user, so a held-down Run button can't fill the
+// queue from a single account.
+const INFLIGHT_TTL_SEC = 60;
+
+/** Compare-and-delete, so a run never releases a lock it no longer owns. */
+const RELEASE_IF_OWNED = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+end
+return 0
+`;
+
+function releaseIfOwned(key: string, token: string): Promise<unknown> {
+  return redis.eval(RELEASE_IF_OWNED, 1, key, token);
+}
 
 // QueueEvents opens a blocking Redis connection: never the shared client,
 // and one instance per process rather than one per request.
@@ -37,6 +62,13 @@ function getQueueEvents(): QueueEvents {
   }
 
   return queueEvents;
+}
+
+/** Lets the HTTP server release the blocking connection on shutdown. */
+export async function closeRunQueueEvents(): Promise<void> {
+  if (!queueEvents) return;
+  await queueEvents.close();
+  queueEvents = null;
 }
 
 export class RunService {
@@ -92,44 +124,91 @@ export class RunService {
     }
 
     const runId = crypto.randomUUID();
+    const inflightKey = `run:inflight:${userId}`;
 
-    const job = await runQueue.add("run-code", {
+    // TTL so a crashed API cannot strand a user behind their own lock.
+    const acquired = await redis.set(
+      inflightKey,
       runId,
-      userId,
-      problemId: problem.id,
-      language,
-      sourceCode,
-      timeLimitMs: problem.timeLimitMs,
-      memoryLimitMb: problem.memoryLimitMb,
-      testCases: resolved,
-    });
+      "EX",
+      INFLIGHT_TTL_SEC,
+      "NX",
+    );
+
+    if (acquired !== "OK") {
+      throw new ConflictError("A run is already in progress");
+    }
 
     try {
-      return (await job.waitUntilFinished(
-        getQueueEvents(),
-        RUN_WAIT_TIMEOUT_MS,
-      )) as RunOutcome;
+      await this.assertCapacity();
+
+      const job = await runQueue.add("run-code", {
+        runId,
+        userId,
+        problemId: problem.id,
+        language,
+        sourceCode,
+        timeLimitMs: problem.timeLimitMs,
+        memoryLimitMb: problem.memoryLimitMb,
+        testCases: resolved,
+      });
+
+      try {
+        const outcome = (await job.waitUntilFinished(
+          getQueueEvents(),
+          RUN_WAIT_TIMEOUT_MS,
+        )) as RunOutcome;
+
+        // Result is in hand; leaving it in Redis only costs memory.
+        void job.remove().catch(() => {});
+
+        return outcome;
+      } catch (error) {
+        await job.remove().catch(() => {});
+
+        logger.error(
+          { err: error, runId, problemId: problem.id, language },
+          "run job did not produce a result",
+        );
+
+        // Rejects on both job failure and wait timeout, and crosses the
+        // process boundary as a plain Error — so tell them apart by message.
+        const timedOut = /timed out/i.test(
+          error instanceof Error ? error.message : "",
+        );
+
+        throw timedOut
+          ? new AppError(
+              504,
+              "RUN_TIMEOUT",
+              "Run did not complete in time, please try again",
+            )
+          : new AppError(500, "RUN_FAILED", "Run failed, please try again");
+      }
+    } finally {
+      await releaseIfOwned(inflightKey, runId).catch(() => {});
+    }
+  }
+
+  /** Rejects fast when saturated, instead of queueing work that will time out. */
+  private async assertCapacity(): Promise<void> {
+    let waiting: number;
+
+    try {
+      waiting = await runQueue.getWaitingCount();
     } catch (error) {
-      await job.remove().catch(() => {});
+      // Never fail a run because the depth probe itself broke.
+      logger.warn({ err: error }, "run queue depth probe failed");
+      return;
+    }
 
-      logger.error(
-        { err: error, runId, problemId: problem.id, language },
-        "run job did not produce a result",
+    if (waiting >= MAX_QUEUE_DEPTH) {
+      logger.warn({ waiting, max: MAX_QUEUE_DEPTH }, "run queue saturated");
+      throw new AppError(
+        503,
+        "RUN_BUSY",
+        "The judge is busy right now, please try again in a moment",
       );
-
-      // Rejects on both job failure and wait timeout, and crosses the
-      // process boundary as a plain Error — so tell them apart by message.
-      const timedOut = /timed out/i.test(
-        error instanceof Error ? error.message : "",
-      );
-
-      throw timedOut
-        ? new AppError(
-            504,
-            "RUN_TIMEOUT",
-            "Run did not complete in time, please try again",
-          )
-        : new AppError(500, "RUN_FAILED", "Run failed, please try again");
     }
   }
 

@@ -12,6 +12,8 @@ export interface RunRequest {
   stdin: string;
   timeLimitMs: number;
   memoryLimitMb: number;
+  /** Bytes of stdout/stderr kept per test case. Defaults to 4 KB. */
+  maxStoredOutputBytes?: number;
 }
 
 export interface RunResult {
@@ -21,6 +23,9 @@ export interface RunResult {
   timedOut: boolean;
   memoryExceeded: boolean;
   outputExceeded: boolean;
+  /** Output was longer than the stored preview — what you have is cut short. */
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
 }
 
 export interface RunProgress {

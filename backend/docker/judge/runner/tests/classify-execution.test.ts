@@ -15,6 +15,8 @@ const result = (over: Partial<RunResult> = {}): RunResult => ({
   timedOut: false,
   memoryExceeded: false,
   outputExceeded: false,
+  stdoutTruncated: false,
+  stderrTruncated: false,
   ...over,
 });
 

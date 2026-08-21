@@ -5,6 +5,10 @@ import type { RunRequest } from "../types/runner.type.ts";
 import type { RunOutcome, RunTestCase, RunTestCaseResult } from "../types/run.type.ts";
 import type { Verdict } from "../types/verdict.types.ts";
 
+// Wall-clock ceiling for one run: without it, ten TLE cases would hold the
+// only worker slot for 20s+. Cases past it are reported as skipped.
+const RUN_WALL_BUDGET_MS = Number(process.env.RUN_WALL_BUDGET_MS ?? 15_000);
+
 /**
  * Executes user code behind the "Run" button. Unlike JudgeService, every
  * test case runs (no early exit on failure) and only sample cases get a
@@ -34,14 +38,22 @@ export class RunService {
           passedSampleCases: 0,
           totalSampleCases,
           executionTimeMs: performance.now() - startTime,
+          budgetExceeded: false,
           results: [],
         };
       }
 
       const results: RunTestCaseResult[] = [];
       let passedSampleCases = 0;
+      let budgetExceeded = false;
 
       for (const testCase of testCases) {
+        if (performance.now() - startTime > RUN_WALL_BUDGET_MS) {
+          budgetExceeded = true;
+          results.push(this.skippedResult(testCase));
+          continue;
+        }
+
         const testStartTime = performance.now();
 
         const result = await this.runner.execute(
@@ -81,11 +93,19 @@ export class RunService {
           stderr: result.stderr,
           exitCode: result.exitCode,
           executionTimeMs,
+          stdoutTruncated: result.stdoutTruncated,
+          stderrTruncated: result.stderrTruncated,
+          skipped: false,
         });
 
         // A runaway process survived the kill grace period: anything run
         // after this would report garbage.
-        if (sandbox.poisoned) break;
+        if (sandbox.poisoned) {
+          for (const remaining of testCases.slice(results.length)) {
+            results.push(this.skippedResult(remaining));
+          }
+          break;
+        }
       }
 
       return {
@@ -94,11 +114,30 @@ export class RunService {
         passedSampleCases,
         totalSampleCases,
         executionTimeMs: performance.now() - startTime,
+        budgetExceeded,
         results,
       };
     } finally {
       await this.runner.destroySandbox(sandbox);
     }
+  }
+
+  /** A case the run never got to — reported, not silently dropped. */
+  private skippedResult(testCase: RunTestCase): RunTestCaseResult {
+    return {
+      testCaseId: testCase.id,
+      isSample: testCase.isSample,
+      verdict: null,
+      input: testCase.stdin,
+      expectedOutput: testCase.expectedOutput ?? null,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      executionTimeMs: 0,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      skipped: true,
+    };
   }
 
   /**

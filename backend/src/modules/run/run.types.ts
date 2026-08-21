@@ -36,6 +36,9 @@ const runTestCaseSchema = z.object({
     .optional(),
 });
 
+// Per-case caps still allow 10 x 16 KB through Redis; this bounds the sum.
+export const MAX_TOTAL_INPUT_BYTES = 64 * 1024;
+
 export const createRunSchema = z.object({
   problemId: z.string().min(1).max(64),
 
@@ -64,6 +67,16 @@ export const createRunSchema = z.object({
     .max(
       MAX_RUN_TEST_CASES,
       `A run may not contain more than ${MAX_RUN_TEST_CASES} test cases`,
+    )
+    .refine(
+      (cases) =>
+        cases.reduce(
+          (total, tc) => total + Buffer.byteLength(tc.input ?? "", "utf8"),
+          0,
+        ) <= MAX_TOTAL_INPUT_BYTES,
+      {
+        message: `Test case inputs must not exceed ${MAX_TOTAL_INPUT_BYTES} bytes in total`,
+      },
     )
     .optional(),
 });

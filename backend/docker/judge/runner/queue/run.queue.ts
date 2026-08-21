@@ -7,13 +7,14 @@ export const RUN_QUEUE_NAME = "run";
 // the user wait longer for a failure they need to see now.
 export const RUN_JOB_OPTIONS = {
   attempts: 1,
+  // The API deletes its own job once read; these only catch unclaimed ones.
   removeOnComplete: {
-    age: 300,
-    count: 500,
+    age: 60,
+    count: 50,
   },
   removeOnFail: {
-    age: 3_600,
-    count: 500,
+    age: 600,
+    count: 100,
   },
 };
 

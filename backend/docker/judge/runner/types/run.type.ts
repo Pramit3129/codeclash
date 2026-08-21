@@ -23,6 +23,11 @@ export interface RunTestCaseResult {
   stderr: string;
   exitCode: number | null;
   executionTimeMs: number;
+  /** Output exceeded the preview cap — show a "truncated" marker. */
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  /** Never executed: the run ran out of its wall-clock budget first. */
+  skipped: boolean;
 }
 
 export interface RunOutcome {
@@ -32,6 +37,8 @@ export interface RunOutcome {
   passedSampleCases: number;
   totalSampleCases: number;
   executionTimeMs: number;
+  /** Some cases were skipped to keep one run from monopolising the worker. */
+  budgetExceeded: boolean;
   results: RunTestCaseResult[];
 }
 

@@ -9,6 +9,8 @@ import { LANGUAGE_CONFIG } from "../config/language.config.ts";
 import { resolveConcurrency } from "../utils/judge.concurrency.ts";
 import type { RunJobData } from "../types/run.type.ts";
 
+const RUN_MAX_STORED_OUTPUT_BYTES = 32 * 1024;
+
 const runner = new DockerRunner();
 const comparator = new OutputComparator();
 const runService = new RunService(runner, comparator);
@@ -54,6 +56,8 @@ export const runWorker = new Worker(
         stdin: "",
         timeLimitMs: data.timeLimitMs,
         memoryLimitMb: data.memoryLimitMb,
+        // Reading the output is the point of a run: keep more than the judge.
+        maxStoredOutputBytes: RUN_MAX_STORED_OUTPUT_BYTES,
       },
       data.testCases,
     );

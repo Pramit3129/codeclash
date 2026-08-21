@@ -19,6 +19,9 @@ const KILL_GRACE_MS = 3_000;
 const DOCKER_AUX_TIMEOUT_MS = 10_000;
 const COMPILE_TIMEOUT_MS = 20_000;
 const MAX_COMPILE_OUTPUT_BYTES = 8 * 1024;
+
+/** How much of each stream is kept when the caller doesn't ask for more. */
+const DEFAULT_MAX_STORED_OUTPUT_BYTES = 4 * 1024;
 const COMPILE_TIMEOUT_EXIT_CODE = 124;
 
 export class DockerRunner {
@@ -110,11 +113,19 @@ export class DockerRunner {
       }, COMPILE_TIMEOUT_MS);
 
       child.stdout.on("data", (data: Buffer) => {
-        stdout = this.appendOutputPreview(stdout, data, MAX_COMPILE_OUTPUT_BYTES);
+        stdout = this.appendOutputPreview(
+          stdout,
+          data,
+          MAX_COMPILE_OUTPUT_BYTES,
+        ).text;
       });
 
       child.stderr.on("data", (data: Buffer) => {
-        stderr = this.appendOutputPreview(stderr, data, MAX_COMPILE_OUTPUT_BYTES);
+        stderr = this.appendOutputPreview(
+          stderr,
+          data,
+          MAX_COMPILE_OUTPUT_BYTES,
+        ).text;
       });
 
       child.on("error", (error) => {
@@ -133,18 +144,24 @@ export class DockerRunner {
     });
   }
 
+  /** Keeps at most `maxBytes` of a stream, reporting whether bytes were dropped. */
   private appendOutputPreview(
     current: string,
     chunk: Buffer,
     maxBytes: number,
-  ): string {
+  ): { text: string; truncated: boolean } {
     const currentBytes = Buffer.byteLength(current, "utf8");
-    if (currentBytes >= maxBytes) return current;
+    if (currentBytes >= maxBytes) return { text: current, truncated: true };
 
     const remaining = maxBytes - currentBytes;
-    if (chunk.length <= remaining) return current + chunk.toString();
+    if (chunk.length <= remaining) {
+      return { text: current + chunk.toString(), truncated: false };
+    }
 
-    return current + chunk.subarray(0, remaining).toString();
+    return {
+      text: current + chunk.subarray(0, remaining).toString(),
+      truncated: true,
+    };
   }
 
   /**
@@ -163,9 +180,12 @@ export class DockerRunner {
     let stderr = "";
     let timedOut = false;
     let outputExceeded = false;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
 
     const MAX_OUTPUT_BYTES = 1024 * 1024;
-    const MAX_STORED_OUTPUT_BYTES = 4 * 1024;
+    const maxStoredOutputBytes =
+      request.maxStoredOutputBytes ?? DEFAULT_MAX_STORED_OUTPUT_BYTES;
     let stdoutBytes = 0;
     let stderrBytes = 0;
 
@@ -213,6 +233,8 @@ export class DockerRunner {
           timedOut,
           memoryExceeded,
           outputExceeded,
+          stdoutTruncated,
+          stderrTruncated,
         });
       };
 
@@ -262,7 +284,13 @@ export class DockerRunner {
           outputExceeded = true;
           enforceLimit();
         }
-        stderr = this.appendOutputPreview(stderr, data, MAX_STORED_OUTPUT_BYTES);
+        const appended = this.appendOutputPreview(
+          stderr,
+          data,
+          maxStoredOutputBytes,
+        );
+        stderr = appended.text;
+        stderrTruncated ||= appended.truncated;
       });
 
       child.stdout.on("data", (data: Buffer) => {
@@ -271,7 +299,13 @@ export class DockerRunner {
           outputExceeded = true;
           enforceLimit();
         }
-        stdout = this.appendOutputPreview(stdout, data, MAX_STORED_OUTPUT_BYTES);
+        const appended = this.appendOutputPreview(
+          stdout,
+          data,
+          maxStoredOutputBytes,
+        );
+        stdout = appended.text;
+        stdoutTruncated ||= appended.truncated;
       });
 
       child.on("error", (error) => {
