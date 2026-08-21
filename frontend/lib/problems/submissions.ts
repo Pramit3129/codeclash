@@ -1,6 +1,4 @@
-import { apiJson } from "@/lib/auth/apiClient";
-import { API_URL } from "@/lib/auth/config";
-import { tokenStore } from "@/lib/auth/tokenStore";
+import { apiFetch, apiJson } from "@/lib/auth/apiClient";
 import type {
   Language,
   Submission,
@@ -42,68 +40,122 @@ export async function getSubmission(
   );
 }
 
-// ─── SSE Event Source ───────────────────────────────────────────────
+// ─── SSE Judge Stream ───────────────────────────────────────────────
 
 export interface JudgeStreamCallbacks {
   onProgress: (event: JudgeProgressEvent) => void;
   onVerdict: (event: JudgeVerdictEvent) => void;
-  onError: (error: Event) => void;
+  onError: (error: unknown) => void;
   onOpen: () => void;
 }
 
 /**
- * Opens an SSE connection to the judge stream on the backend.
- * Returns a cleanup function to close the connection.
+ * Opens the judge stream and returns a cleanup function.
  *
- * EventSource cannot set an Authorization header, so the access token is
- * passed as a query parameter. The backend sends CORS headers for this
- * origin, so the connection is made directly instead of through a proxy.
+ * Read over `fetch` rather than `EventSource`: the backend authenticates
+ * from the `Authorization` header only (see middleware/authenticate.ts), and
+ * `EventSource` cannot set request headers. Going through `apiFetch` also
+ * keeps the access token out of the URL and reuses the 401 refresh-and-retry
+ * path, so a token that expires mid-judge doesn't kill the stream.
  */
 export function connectJudgeStream(
   submissionId: string,
   callbacks: JudgeStreamCallbacks,
 ): () => void {
-  const token = tokenStore.get();
+  const controller = new AbortController();
+  let sawVerdict = false;
 
-  const params = new URLSearchParams();
-  if (token) params.set("token", token);
+  /**
+   * The backend sends every event as a data-only frame with the name carried
+   * inside the JSON envelope (`{ event, data }`) rather than as an SSE
+   * `event:` field, so dispatch on the envelope. A real `event:` field wins
+   * when present, in case the wire format gains one later.
+   */
+  const dispatch = (raw: string, namedEvent: string | null) => {
+    try {
+      const payload = JSON.parse(raw);
+      const name = namedEvent ?? payload.event;
+      const data = payload.data ?? payload.result ?? payload;
 
-  const url = `${API_URL}/api/submissions/${submissionId}/judgeStream?${params.toString()}`;
+      if (name === "PROGRESS") {
+        callbacks.onProgress(data);
+      } else if (name === "VERDICT") {
+        sawVerdict = true;
+        callbacks.onVerdict(data);
+      }
+    } catch {
+      // Malformed event data — ignore
+    }
+  };
 
-  const eventSource = new EventSource(url, { withCredentials: true });
-  let errored = false;
+  // One SSE frame: `event:`/`data:` fields, `:` comment lines (heartbeats)
+  // ignored, multiple `data:` lines joined with newlines per the spec.
+  const handleFrame = (frame: string) => {
+    let name: string | null = null;
+    const data: string[] = [];
 
-  eventSource.onopen = () => {
+    for (const line of frame.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+
+      const colon = line.indexOf(":");
+      const field = colon === -1 ? line : line.slice(0, colon);
+      const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
+
+      if (field === "event") name = value;
+      else if (field === "data") data.push(value);
+    }
+
+    if (data.length > 0) dispatch(data.join("\n"), name);
+  };
+
+  const run = async () => {
+    const res = await apiFetch(`/api/submissions/${submissionId}/judgeStream`, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!res.ok || !res.body) {
+      throw new Error(`Judge stream failed with status ${res.status}`);
+    }
+
     callbacks.onOpen();
+
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer = (buffer + value).replace(/\r\n/g, "\n");
+
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        handleFrame(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+
+    if (buffer.trim()) handleFrame(buffer);
+
+    // The backend closes the stream after the verdict. Ending without one
+    // means the connection dropped early — surface it so the caller can
+    // fall back to polling.
+    if (!sawVerdict) {
+      throw new Error("Judge stream closed before a verdict arrived");
+    }
   };
 
-  eventSource.addEventListener("PROGRESS", ((event: MessageEvent) => {
-    try {
-      const data = JSON.parse(event.data);
-      callbacks.onProgress(data.result ?? data);
-    } catch {
-      // Malformed event data — ignore
-    }
-  }) as EventListener);
-
-  eventSource.addEventListener("VERDICT", ((event: MessageEvent) => {
-    try {
-      const data = JSON.parse(event.data);
-      callbacks.onVerdict(data.result ?? data);
-    } catch {
-      // Malformed event data — ignore
-    }
-  }) as EventListener);
-
-  eventSource.onerror = (error) => {
-    if (errored) return;
-    errored = true;
-    eventSource.close();
+  run().catch((error) => {
+    if (controller.signal.aborted) return;
     callbacks.onError(error);
-  };
+  });
 
   return () => {
-    eventSource.close();
+    controller.abort();
   };
 }
 
