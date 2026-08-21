@@ -36,6 +36,11 @@ submissionRouter.post(
   asyncHandler(createSubmission),
 );
 
+
+submissionRouter.get("/:id/judgeStream", authenticate, authorize("USER", "ADMIN"), (req, res) => {
+  
+})
+
 submissionRouter.get(
   "/:id",
   authenticate,
