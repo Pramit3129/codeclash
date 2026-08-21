@@ -59,8 +59,12 @@ export class SubmissionService {
     res.flushHeaders();
 
     const sendEvent = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({
+          event,
+          data,
+        })}\n\n`,
+      );
     };
 
     // If submission is already finished before SSE connection opens

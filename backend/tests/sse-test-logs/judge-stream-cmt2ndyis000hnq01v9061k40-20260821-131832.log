@@ -1,0 +1,18 @@
+event: PROGRESS
+data: {"testCaseId":"T1","passedTestCases":1,"totalTestCases":5,"verdict":"AC","stdout":"5\n","stderr":"","exitCode":0,"executionTimeMs":137.72506299987435}
+
+event: PROGRESS
+data: {"testCaseId":"T2","passedTestCases":2,"totalTestCases":5,"verdict":"AC","stdout":"30\n","stderr":"","exitCode":0,"executionTimeMs":106.0197689998895}
+
+event: PROGRESS
+data: {"testCaseId":"T3","passedTestCases":3,"totalTestCases":5,"verdict":"AC","stdout":"300\n","stderr":"","exitCode":0,"executionTimeMs":126.65723800007254}
+
+event: PROGRESS
+data: {"testCaseId":"T4","passedTestCases":4,"totalTestCases":5,"verdict":"AC","stdout":"-5\n","stderr":"","exitCode":0,"executionTimeMs":112.40981499990448}
+
+event: PROGRESS
+data: {"testCaseId":"T5","passedTestCases":5,"totalTestCases":5,"verdict":"AC","stdout":"1000000\n","stderr":"","exitCode":0,"executionTimeMs":168.92462000017986}
+
+event: VERDICT
+data: {"verdict":"AC","passedTestCases":5,"totalTestCases":5,"failedTestCaseId":null,"executionTimeMs":944.7028829997871,"testResults":[{"testCaseId":"cmsslsg3d0006qg82xcoepc8k","verdict":"AC","stdout":"5\n","stderr":"","exitCode":0,"executionTimeMs":137.72506299987435},{"testCaseId":"cmsslsg3d0007qg82zfz5z9jn","verdict":"AC","stdout":"30\n","stderr":"","exitCode":0,"executionTimeMs":106.0197689998895},{"testCaseId":"cmsslsg3d0008qg82pmfm3lnt","verdict":"AC","stdout":"300\n","stderr":"","exitCode":0,"executionTimeMs":126.65723800007254},{"testCaseId":"cmsslsg3d0009qg82veztb19d","verdict":"AC","stdout":"-5\n","stderr":"","exitCode":0,"executionTimeMs":112.40981499990448},{"testCaseId":"cmsslsg3d000aqg82jyckx3i8","verdict":"AC","stdout":"1000000\n","stderr":"","exitCode":0,"executionTimeMs":168.92462000017986}]}
+
