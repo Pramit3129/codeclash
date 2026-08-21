@@ -346,6 +346,7 @@ export default function ProblemDetailPage() {
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSubmission, setActiveSubmission] = useState<Submission | null>(null);
+  const [activeSubmissionExpanded, setActiveSubmissionExpanded] = useState(true);
   const [pastSubmissions, setPastSubmissions] = useState<SubmissionEntry[]>([]);
   const cleanupSseRef = useRef<(() => void) | null>(null);
 
@@ -462,6 +463,7 @@ export default function ProblemDetailPage() {
     setIsSubmitting(true);
     cleanupSseRef.current?.();
     setActiveSubmission(null);
+    setActiveSubmissionExpanded(true);
 
     try {
       // 1. POST /api/submissions
@@ -775,8 +777,8 @@ export default function ProblemDetailPage() {
                     activeSubmission.status === "QUEUED" ||
                     activeSubmission.status === "RUNNING"
                   }
-                  expanded={true}
-                  onToggle={() => {}}
+                  expanded={activeSubmissionExpanded}
+                  onToggle={() => setActiveSubmissionExpanded((prev) => !prev)}
                 />
               )}
               {pastSubmissions.length === 0 && !activeSubmission && (
@@ -784,23 +786,25 @@ export default function ProblemDetailPage() {
                   <p className="text-sm text-ink-3">No submissions yet.</p>
                 </div>
               )}
-              {pastSubmissions.map((entry) => (
-                <SubmissionCard
-                  key={entry.submission.id}
-                  submission={entry.submission}
-                  isActive={false}
-                  expanded={entry.expanded}
-                  onToggle={() =>
-                    setPastSubmissions((prev) =>
-                      prev.map((e) =>
-                        e.submission.id === entry.submission.id
-                          ? { ...e, expanded: !e.expanded }
-                          : e,
-                      ),
-                    )
-                  }
-                />
-              ))}
+              {pastSubmissions
+                .filter((entry) => entry.submission.id !== activeSubmission?.id)
+                .map((entry) => (
+                  <SubmissionCard
+                    key={entry.submission.id}
+                    submission={entry.submission}
+                    isActive={false}
+                    expanded={entry.expanded}
+                    onToggle={() =>
+                      setPastSubmissions((prev) =>
+                        prev.map((e) =>
+                          e.submission.id === entry.submission.id
+                            ? { ...e, expanded: !e.expanded }
+                            : e,
+                        ),
+                      )
+                    }
+                  />
+                ))}
             </div>
           )}
         </div>
