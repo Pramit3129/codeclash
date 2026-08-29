@@ -149,28 +149,58 @@ export class SubmissionService {
       return res.end();
     }
   }
-  async getUserSubmissions(userId: string, problemId: string) {
-    const submissions = await prisma.submission.findMany({
-      where: {
-        userId,
-        problemId
+  async getUserSubmissions(
+    userId: string,
+    problemId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const [submissions, total] = await Promise.all([
+      prisma.submission.findMany({
+        where: {
+          userId,
+          problemId,
+        },
+        select: {
+          passedTestCases: true,
+          totalTestCases: true,
+          verdict: true,
+          createdAt: true,
+          language: true,
+          id: true,
+          failureReason: true,
+          status: true,
+          executionTimeMs: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: limit,
+      }),
+      prisma.submission.count({
+        where: {
+          userId,
+          problemId,
+        },
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      submissions,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
       },
-      select:{
-        passedTestCases:true,
-        totalTestCases:true,
-        verdict: true,
-        createdAt: true,
-        language: true,
-        id: true,
-        failureReason: true,
-        status: true,
-        executionTimeMs: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    })
-    return submissions;
+    };
   }
 }
 

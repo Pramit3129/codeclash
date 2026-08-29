@@ -4,6 +4,7 @@ import {
   createSubmissionSchema,
   problemIdSchema,
   submissionIdSchema,
+  getSubmissionsQuerySchema,
 } from "./submission.types.js";
 import { submissionService } from "./submission.service.ts";
 import type { SupportedLanguage } from "../../../docker/judge/runner/types/runner.type.ts";
@@ -86,22 +87,33 @@ export const streamSubmission = async (
 };
 
 export const getSubmissions = async (req: Request, res: Response) => {
-  const user = req.auth?.userId;
-  const result = problemIdSchema.safeParse(req.params);
+  const paramResult = problemIdSchema.safeParse(req.params);
 
-  if (!result.success) {
+  if (!paramResult.success) {
     throw new BadRequestError("Invalid Problem ID", {
-      details: result.error.flatten().fieldErrors,
+      details: paramResult.error.flatten().fieldErrors,
     });
   }
 
-  const submissions = await submissionService.getUserSubmissions(
+  const queryResult = getSubmissionsQuerySchema.safeParse(req.query);
+
+  if (!queryResult.success) {
+    throw new BadRequestError("Invalid query parameters", {
+      details: queryResult.error.flatten().fieldErrors,
+    });
+  }
+
+  const { page, limit } = queryResult.data;
+
+  const result = await submissionService.getUserSubmissions(
     req.auth!.userId,
-    result.data.problemId,
+    paramResult.data.problemId,
+    page,
+    limit,
   );
 
   return res.status(200).json({
     success: true,
-    submissions,
+    ...result,
   });
-}
+};
