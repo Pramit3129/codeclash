@@ -30,14 +30,17 @@ export async function apiFetch(
   _retry = true,
 ): Promise<Response> {
   const token = tokenStore.get();
+  const isJsonBody = Boolean(init.body && typeof init.body === "string");
+  const headers: Record<string, string> = {
+    ...(isJsonBody ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(init.headers as Record<string, string>),
+  };
+
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
+    headers,
   });
 
   if (res.status === 401 && _retry) {

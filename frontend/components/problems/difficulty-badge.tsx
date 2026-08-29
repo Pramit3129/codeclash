@@ -2,24 +2,20 @@ import type { Difficulty } from "@/lib/problems/types";
 import { DIFFICULTY_LABELS } from "@/lib/problems/types";
 
 const SOLID_STYLES: Record<Difficulty, string> = {
-  EASY: "bg-success-soft text-success",
-  MEDIUM: "bg-amber-500/12 text-amber-400",
-  HARD: "bg-danger/12 text-danger",
+  EASY: "bg-[#00b8a3]/15 text-[#00b8a3] border border-[#00b8a3]/30",
+  MEDIUM: "bg-[#ffa116]/15 text-[#ffa116] border border-[#ffa116]/30",
+  HARD: "bg-[#ef4743]/15 text-[#ef4743] border border-[#ef4743]/30",
 };
 
 const TEXT_STYLES: Record<Difficulty, string> = {
-  EASY: "text-success",
-  MEDIUM: "text-amber-400",
-  HARD: "text-danger",
+  EASY: "text-[#00b8a3]",
+  MEDIUM: "text-[#ffa116]",
+  HARD: "text-[#ef4743]",
 };
 
 interface DifficultyBadgeProps {
   difficulty: Difficulty;
   className?: string;
-  /**
-   * `solid` — filled pill, used in listings.
-   * `mark`  — bare dot + letterspaced label, for a page's own header.
-   */
   variant?: "solid" | "mark";
 }
 
@@ -31,7 +27,7 @@ export function DifficultyBadge({
   if (variant === "mark") {
     return (
       <span
-        className={`inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] ${TEXT_STYLES[difficulty]} ${className}`}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${SOLID_STYLES[difficulty]} ${className}`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-current" />
         {DIFFICULTY_LABELS[difficulty]}
@@ -41,7 +37,7 @@ export function DifficultyBadge({
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${SOLID_STYLES[difficulty]} ${className}`}
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${SOLID_STYLES[difficulty]} ${className}`}
     >
       {DIFFICULTY_LABELS[difficulty]}
     </span>

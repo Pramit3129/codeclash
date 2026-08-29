@@ -1,4 +1,4 @@
-import { apiFetch, apiJson } from "@/lib/auth/apiClient";
+import { apiFetch, apiJson, ApiError } from "@/lib/auth/apiClient";
 import type {
   Language,
   Submission,
@@ -42,11 +42,17 @@ export async function getSubmission(
 
 // ─── SSE Judge Stream ───────────────────────────────────────────────
 
+/**
+ * How long to keep draining after VERDICT before giving up on the server
+ * closing the response itself.
+ */
+const VERDICT_GRACE_MS = 3000;
+
 export interface JudgeStreamCallbacks {
   onProgress: (event: JudgeProgressEvent) => void;
   onVerdict: (event: JudgeVerdictEvent) => void;
   onError: (error: unknown) => void;
-  onOpen: () => void;
+  onOpen?: () => void;
 }
 
 /**
@@ -57,106 +63,146 @@ export interface JudgeStreamCallbacks {
  * `EventSource` cannot set request headers. Going through `apiFetch` also
  * keeps the access token out of the URL and reuses the 401 refresh-and-retry
  * path, so a token that expires mid-judge doesn't kill the stream.
+ *
+ * The caller must leave the stream open until VERDICT arrives. The judge
+ * publishes a PROGRESS event for the failing test case and only *then* the
+ * terminal VERDICT, so closing early on the first non-AC result aborts the
+ * response mid-write and loses the final result.
  */
 export function connectJudgeStream(
   submissionId: string,
   callbacks: JudgeStreamCallbacks,
 ): () => void {
   const controller = new AbortController();
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let graceTimer: ReturnType<typeof setTimeout> | null = null;
   let sawVerdict = false;
+  let closed = false;
+
+  const close = () => {
+    if (closed) return;
+    closed = true;
+
+    if (graceTimer) {
+      clearTimeout(graceTimer);
+      graceTimer = null;
+    }
+
+    // Cancelling the body is the graceful stop once we're reading; aborting
+    // the request mid-read leaves the browser to reject the in-flight
+    // `read()` with an uncaught "network error" TypeError. Abort is only
+    // right before the body exists, i.e. while still awaiting headers.
+    if (reader) {
+      void reader.cancel().catch(() => {});
+      reader = null;
+    } else {
+      controller.abort();
+    }
+  };
 
   /**
-   * The backend sends every event as a data-only frame with the name carried
-   * inside the JSON envelope (`{ event, data }`) rather than as an SSE
-   * `event:` field, so dispatch on the envelope. A real `event:` field wins
-   * when present, in case the wire format gains one later.
+   * One SSE frame: `data:` lines carry the payload, `:` lines are comments
+   * (the backend's 15s heartbeat) and carry nothing.
    */
-  const dispatch = (raw: string, namedEvent: string | null) => {
-    try {
-      const payload = JSON.parse(raw);
-      const name = namedEvent ?? payload.event;
-      const data = payload.data ?? payload.result ?? payload;
-
-      if (name === "PROGRESS") {
-        callbacks.onProgress(data);
-      } else if (name === "VERDICT") {
-        sawVerdict = true;
-        callbacks.onVerdict(data);
-      }
-    } catch {
-      // Malformed event data — ignore
-    }
-  };
-
-  // One SSE frame: `event:`/`data:` fields, `:` comment lines (heartbeats)
-  // ignored, multiple `data:` lines joined with newlines per the spec.
   const handleFrame = (frame: string) => {
-    let name: string | null = null;
-    const data: string[] = [];
+    const data = frame
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart())
+      .join("\n");
 
-    for (const line of frame.split("\n")) {
-      if (!line || line.startsWith(":")) continue;
+    if (!data) return;
 
-      const colon = line.indexOf(":");
-      const field = colon === -1 ? line : line.slice(0, colon);
-      const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
-
-      if (field === "event") name = value;
-      else if (field === "data") data.push(value);
+    let payload: { event?: string; data?: unknown; result?: unknown };
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
     }
 
-    if (data.length > 0) dispatch(data.join("\n"), name);
+    // The service wraps the published payload as { event, data }; the
+    // publisher's own envelope calls it `result`. Accept either.
+    const body = (payload.data ?? payload.result ?? payload) as never;
+
+    if (payload.event === "PROGRESS") {
+      callbacks.onProgress(body);
+    } else if (payload.event === "VERDICT") {
+      sawVerdict = true;
+      callbacks.onVerdict(body);
+
+      // Deliberately keep reading. The backend ends the response itself
+      // after VERDICT, but only once its async Redis cleanup resolves —
+      // hanging up first means the chunked terminator never arrives and the
+      // browser logs ERR_INCOMPLETE_CHUNKED_ENCODING. Draining to `done`
+      // lets the response complete normally. The timer is just a safety net
+      // for a server that never closes.
+      graceTimer = setTimeout(close, VERDICT_GRACE_MS);
+    }
   };
 
-  const run = async () => {
-    const res = await apiFetch(`/api/submissions/${submissionId}/judgeStream`, {
-      method: "GET",
-      headers: { Accept: "text/event-stream" },
-      cache: "no-store",
-      signal: controller.signal,
-    });
+  void (async () => {
+    try {
+      const res = await apiFetch(
+        `/api/submissions/${submissionId}/judgeStream`,
+        {
+          method: "GET",
+          headers: { Accept: "text/event-stream" },
+          cache: "no-store",
+          signal: controller.signal,
+        },
+      );
 
-    if (!res.ok || !res.body) {
-      throw new Error(`Judge stream failed with status ${res.status}`);
-    }
-
-    callbacks.onOpen();
-
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = "";
-
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer = (buffer + value).replace(/\r\n/g, "\n");
-
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary !== -1) {
-        handleFrame(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + 2);
-        boundary = buffer.indexOf("\n\n");
+      if (!res.ok || !res.body) {
+        throw new ApiError(res.status, {
+          message: `Judge stream failed (${res.status})`,
+        });
       }
+
+      callbacks.onOpen?.();
+
+      reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (!closed && reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Frames are separated by a blank line. Anything after the last
+        // separator is a partial frame — hold it until its terminator lands.
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          handleFrame(buffer.slice(0, boundary));
+          buffer = buffer.slice(boundary + 2);
+          if (closed) return;
+          boundary = buffer.indexOf("\n\n");
+        }
+      }
+
+      // Server-side end of stream: nothing left to cancel.
+      const closedByCaller = closed;
+      closed = true;
+      reader = null;
+      if (graceTimer) {
+        clearTimeout(graceTimer);
+        graceTimer = null;
+      }
+
+      if (!sawVerdict && !closedByCaller) {
+        callbacks.onError(
+          new Error("Judge stream closed before a verdict arrived"),
+        );
+      }
+    } catch (error) {
+      // An abort we initiated after VERDICT is a normal shutdown, not a fault.
+      if (sawVerdict || closed) return;
+      callbacks.onError(error);
     }
+  })();
 
-    if (buffer.trim()) handleFrame(buffer);
-
-    // The backend closes the stream after the verdict. Ending without one
-    // means the connection dropped early — surface it so the caller can
-    // fall back to polling.
-    if (!sawVerdict) {
-      throw new Error("Judge stream closed before a verdict arrived");
-    }
-  };
-
-  run().catch((error) => {
-    if (controller.signal.aborted) return;
-    callbacks.onError(error);
-  });
-
-  return () => {
-    controller.abort();
-  };
+  return close;
 }
 
 /**

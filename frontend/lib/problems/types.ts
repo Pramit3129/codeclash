@@ -153,3 +153,50 @@ export interface JudgeVerdictEvent {
   executionTimeMs: number;
   testResults: TestResult[];
 }
+
+// ─── Run Types ───────────────────────────────────────────────────────
+
+export interface RunTestCaseInput {
+  ordinal?: number;
+  isSample?: boolean;
+  input?: string;
+}
+
+export interface RunTestCaseResult {
+  testCaseId: string;
+  isSample: boolean;
+  verdict: SubmissionVerdict | null;
+  input: string;
+  expectedOutput: string | null;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  executionTimeMs: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  skipped: boolean;
+}
+
+export interface RunOutcome {
+  status: "OK" | "CE";
+  compileError: string | null;
+  passedSampleCases: number;
+  totalSampleCases: number;
+  executionTimeMs: number;
+  budgetExceeded: boolean;
+  results: RunTestCaseResult[];
+}
+
+export interface RunResponse {
+  success: boolean;
+  run: RunOutcome;
+}
+
+export interface TestCaseItem {
+  id: string;
+  ordinal?: number;
+  isSample: boolean;
+  input: string;
+  expectedOutput?: string;
+}
+
