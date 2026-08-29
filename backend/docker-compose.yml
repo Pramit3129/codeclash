@@ -43,7 +43,10 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
 
-    command: npx tsx watch src/server.ts
+    # node_modules is an anonymous volume, so the image's generated Prisma
+    # client survives schema changes and container recreation. Regenerate on
+    # every boot or queries on new fields fail at runtime.
+    command: sh -c "npx prisma generate && npx tsx watch src/server.ts"
 
 volumes:
   redis-data:
