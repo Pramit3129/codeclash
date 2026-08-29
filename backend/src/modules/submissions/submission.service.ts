@@ -40,7 +40,22 @@ export class SubmissionService {
     const submission = await prisma.submission.findUnique({
       where: { id },
       include: {
-        testResults: true,
+        testResults: {
+          include: {
+            testCase: {
+              select: {
+                ordinal: true,
+                isSample: true,
+                input: true,
+                expectedOutput: true,
+              },
+            },
+          },
+          // Stored rows are in judge order already, but ordering explicitly
+          // keeps "Test 1" on screen meaning ordinal 1 regardless of how the
+          // rows were written.
+          orderBy: { testCase: { ordinal: "asc" } },
+        },
       },
     });
 
@@ -48,7 +63,20 @@ export class SubmissionService {
       throw new NotFoundError("Submission not found");
     }
 
-    return submission;
+    const { testResults, ...rest } = submission;
+
+    return {
+      ...rest,
+      testResults: testResults.map(({ testCase, ...result }) => ({
+        ...result,
+        ordinal: testCase.ordinal,
+        isSample: testCase.isSample,
+        
+        input: result.verdict !== "AC" ? testCase.input : undefined,
+        expectedOutput:
+          result.verdict !== "AC" ? testCase.expectedOutput : undefined,
+      })),
+    };
   }
 
   async streamSubmission(id: string, userId: string, req: Request, res: Response) {
