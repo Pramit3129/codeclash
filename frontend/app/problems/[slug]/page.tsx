@@ -13,8 +13,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  ChevronDown,
   ChevronRight,
+  ChevronLeft,
   FileText,
   BookOpen,
   History,
@@ -35,12 +35,18 @@ import {
   createSubmission,
   connectJudgeStream,
   pollSubmission,
+  getSubmission,
+  getSubmissions,
+  SUBMISSIONS_PAGE_SIZE,
 } from "@/lib/problems/submissions";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import type {
   ProblemDetails,
   Language,
   SampleTestCase,
   Submission,
+  SubmissionListItem,
+  Pagination,
   TestResult,
   TestCaseItem,
   RunOutcome,
@@ -191,26 +197,26 @@ function JudgeProgressBar({
 
 function LeetCodeSubmissionRow({
   submission,
-  index,
-  total,
-  expanded,
-  onToggle,
+  rowNum,
+  onOpen,
   revealedCount,
+  detailLoading = false,
 }: {
   submission: Submission;
-  index: number;
-  total: number;
-  expanded: boolean;
-  onToggle: () => void;
+  /** Position in the user's full history, not in the current page. */
+  rowNum: number;
+  /** Opens the full detail view for this submission. */
+  onOpen: () => void;
   /** Caps how many results are shown; omitted for settled rows (show all). */
   revealedCount?: number;
+  /** This row's detail is being fetched from GET /api/submissions/:id. */
+  detailLoading?: boolean;
 }) {
   const dateStr = new Date(submission.createdAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-  const rowNum = total - index;
   const isAccepted = submission.verdict === "AC";
   const allResults = submission.testResults ?? [];
   const results =
@@ -242,10 +248,14 @@ function LeetCodeSubmissionRow({
     null,
   );
 
+  // History rows arrive without per-test results, but the list endpoint
+  // carries the run's own executionTimeMs — use it until details load.
+  const runtimeMs = slowestMs ?? submission.executionTimeMs ?? null;
+
   return (
     <div className="border-b border-[#282828] bg-[#1a1a1a] hover:bg-[#242424] transition-colors">
       <button
-        onClick={onToggle}
+        onClick={onOpen}
         className="w-full grid grid-cols-12 items-center px-4 py-3 text-left text-xs font-mono"
       >
         <span className="col-span-1 text-gray-500 font-medium">{rowNum}</span>
@@ -278,15 +288,13 @@ function LeetCodeSubmissionRow({
         </div>
         <div className="col-span-2 flex items-center gap-1 text-gray-300">
           <Clock className="w-3 h-3 text-gray-400" />
-          <span>{slowestMs != null ? formatMs(slowestMs) : "—"}</span>
+          <span>{runtimeMs != null ? formatMs(runtimeMs) : "—"}</span>
         </div>
         <div className="col-span-2 flex items-center justify-end gap-2 text-gray-400">
-          {results.length > 0 && (
-            expanded ? (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            )
+          {detailLoading ? (
+            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-gray-400" />
           )}
         </div>
       </button>
@@ -300,36 +308,351 @@ function LeetCodeSubmissionRow({
           done={false}
         />
       )}
+    </div>
+  );
+}
 
-      {expanded && results.length > 0 && (
-        <div className="bg-[#212121] px-6 py-4 border-t border-[#282828] space-y-2 font-mono text-xs">
-          {results.map((tr, i) => (
-            <div
-              key={tr.testCaseId ?? i}
-              className={`p-3 rounded-lg border flex items-center justify-between ${
-                tr.verdict === "AC"
-                  ? "bg-[#262626] border-[#333333] text-gray-200"
-                  : "bg-[#ef4743]/10 border-[#ef4743]/20 text-[#ef4743]"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {tr.verdict === "AC" ? (
-                  <Check className="w-4 h-4 text-[#2cbb5d]" />
-                ) : (
-                  <XCircle className="w-4 h-4 text-[#ef4743]" />
-                )}
-                <span>Test {i + 1}:</span>
-                <span className="font-semibold">{verdictLabel(tr.verdict)}</span>
-              </div>
-              {tr.executionTimeMs != null && (
-                <span className="text-gray-400 text-[11px]">
-                  {formatMs(tr.executionTimeMs)}
+function DetailStat({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-[#333333] bg-[#262626] px-3.5 py-2.5">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">
+        {label}
+      </div>
+      <div
+        className={`mt-1 text-sm font-semibold font-mono ${
+          accent ? "text-[#2cbb5d]" : "text-gray-100"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The full record of one submission, as served by GET /api/submissions/:id:
+ * verdict header, run stats, the exact source that was judged, and the
+ * per-test breakdown. Doubles as the live view of an in-flight run, in which
+ * case `revealedCount` paces the results the same way the list row does.
+ */
+function SubmissionDetailView({
+  submission,
+  loading,
+  error,
+  onBack,
+  onRetry,
+  revealedCount,
+}: {
+  submission: Submission | null;
+  loading: boolean;
+  error: string | null;
+  onBack: () => void;
+  onRetry: () => void;
+  /** Caps how many results are shown while a run is still streaming. */
+  revealedCount?: number;
+}) {
+  const backButton = (
+    <button
+      onClick={onBack}
+      className="flex items-center gap-1.5 text-xs font-medium text-gray-300 hover:text-white transition-colors"
+    >
+      <ArrowLeft className="w-3.5 h-3.5" />
+      All Submissions
+    </button>
+  );
+
+  if (!submission) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="px-4 py-3 border-b border-[#282828] bg-[#262626]">
+          {backButton}
+        </div>
+        <div className="p-12 text-center text-sm text-gray-400">
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading submission…
+            </span>
+          ) : (
+            <span className="flex flex-col items-center gap-3">
+              <span className="text-[#ef4743]">
+                {error ?? "Submission not found."}
+              </span>
+              <button
+                onClick={onRetry}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#282828] border border-[#383838] text-gray-200 hover:bg-[#333333] transition-colors text-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Retry
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const allResults = submission.testResults ?? [];
+  const results =
+    revealedCount == null ? allResults : allResults.slice(0, revealedCount);
+  const revealing = results.length < allResults.length;
+  const isJudging =
+    submission.status === "QUEUED" ||
+    submission.status === "RUNNING" ||
+    revealing;
+  const revealedPassed = results.filter((tr) => tr.verdict === "AC").length;
+  const anyFailed = results.some((tr) => tr.verdict !== "AC");
+  const isAccepted = !isJudging && submission.verdict === "AC";
+
+  const slowestMs = results.reduce<number | null>(
+    (max, tr) =>
+      tr.executionTimeMs == null
+        ? max
+        : max == null
+          ? tr.executionTimeMs
+          : Math.max(max, tr.executionTimeMs),
+    null,
+  );
+  const runtimeMs = slowestMs ?? submission.executionTimeMs ?? null;
+
+  const submittedAt = new Date(submission.createdAt).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  const languageLabel = submission.language
+    ? LANGUAGE_LABELS[submission.language] ?? submission.language
+    : "—";
+
+  // The first non-AC result is what failed the submission; LeetCode leads with
+  // it rather than making the user hunt down the row.
+  const failedResult = results.find((tr) => tr.verdict !== "AC") ?? null;
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-[#282828] bg-[#262626]">
+        {backButton}
+        {loading && (
+          <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Refreshing
+          </span>
+        )}
+      </div>
+
+      <div className="px-5 py-5 space-y-5">
+        {/* Verdict header */}
+        <header className="space-y-1">
+          <h2
+            className={`text-2xl font-semibold ${
+              isJudging
+                ? anyFailed
+                  ? "text-[#ef4743]"
+                  : "text-gray-200"
+                : isAccepted
+                  ? "text-[#2cbb5d]"
+                  : "text-[#ef4743]"
+            }`}
+          >
+            {isJudging ? "Judging…" : verdictLabel(submission.verdict)}
+          </h2>
+          <p className="text-xs text-gray-400">
+            {submission.totalTestCases > 0 && !isJudging
+              ? `${submission.passedTestCases}/${submission.totalTestCases} testcases passed · submitted ${submittedAt}`
+              : `submitted ${submittedAt}`}
+          </p>
+        </header>
+
+        {isJudging && (
+          <JudgeProgressBar
+            revealed={results.length}
+            total={submission.totalTestCases}
+            passed={revealedPassed}
+            failed={anyFailed}
+            done={false}
+          />
+        )}
+
+        {error && (
+          <div className="rounded-xl border border-[#ef4743]/30 bg-[#ef4743]/10 px-3.5 py-2.5 text-xs text-[#ef4743]">
+            {error}
+          </div>
+        )}
+
+        {submission.status === "FAILED" && submission.failureReason && (
+          <div className="rounded-xl border border-[#ef4743]/30 bg-[#ef4743]/10 px-3.5 py-2.5 text-xs font-mono text-[#ef4743]">
+            {submission.failureReason}
+          </div>
+        )}
+
+        {/* Run stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <DetailStat
+            label="Runtime"
+            value={runtimeMs != null ? formatMs(runtimeMs) : "—"}
+          />
+          <DetailStat
+            label="Testcases"
+            value={
+              submission.totalTestCases > 0
+                ? `${submission.passedTestCases}/${submission.totalTestCases}`
+                : "—"
+            }
+            accent={isAccepted}
+          />
+          <DetailStat label="Language" value={languageLabel} />
+          <DetailStat label="Status" value={submission.status} />
+        </div>
+
+        {/* Failing testcase, called out first */}
+        {failedResult && (
+          <section className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Failed Testcase
+            </div>
+            <div className="rounded-xl border border-[#ef4743]/25 bg-[#ef4743]/5 p-3.5 space-y-3 font-mono text-xs">
+              <div className="flex items-center justify-between text-[#ef4743]">
+                <span className="font-semibold">
+                  Test {results.indexOf(failedResult) + 1} ·{" "}
+                  {verdictLabel(failedResult.verdict)}
                 </span>
+                <span className="text-gray-400">
+                  {formatMs(failedResult.executionTimeMs)}
+                </span>
+              </div>
+              {failedResult.input != null && (
+                <OutputBlock label="Input" value={failedResult.input} />
+              )}
+              {failedResult.expectedOutput != null && (
+                <OutputBlock
+                  label="Expected"
+                  value={failedResult.expectedOutput}
+                />
+              )}
+              <OutputBlock label="Your output" value={failedResult.stdout} />
+              {failedResult.stderr?.trim() && (
+                <OutputBlock label="Stderr" value={failedResult.stderr} error />
+              )}
+              {failedResult.exitCode != null && failedResult.exitCode !== 0 && (
+                <div className="text-gray-400">
+                  Exit code: <span className="text-gray-200">{failedResult.exitCode}</span>
+                </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
+          </section>
+        )}
+
+        {/* Judged source */}
+        {submission.sourceCode != null && (
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                <Code2 className="w-3.5 h-3.5" />
+                Code · {languageLabel}
+              </div>
+              <CopyButton text={submission.sourceCode} />
+            </div>
+            <pre className="rounded-xl border border-[#333333] bg-[#262626] p-3.5 overflow-x-auto font-mono text-xs leading-relaxed text-gray-200">
+              {submission.sourceCode}
+            </pre>
+          </section>
+        )}
+
+        {/* Per-test breakdown */}
+        <section className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Testcase Results
+          </div>
+          {results.length === 0 ? (
+            <div className="rounded-xl border border-[#333333] bg-[#262626] px-3.5 py-3 text-xs text-gray-400">
+              {isJudging
+                ? "Waiting for the judge…"
+                : "No testcase results were recorded for this submission."}
+            </div>
+          ) : (
+            <div className="space-y-2 font-mono text-xs">
+              {results.map((tr, i) => (
+                <div
+                  key={tr.testCaseId ?? i}
+                  className={`p-3 rounded-lg border flex items-center justify-between ${
+                    tr.verdict === "AC"
+                      ? "bg-[#262626] border-[#333333] text-gray-200"
+                      : "bg-[#ef4743]/10 border-[#ef4743]/20 text-[#ef4743]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {tr.verdict === "AC" ? (
+                      <Check className="w-4 h-4 text-[#2cbb5d]" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-[#ef4743]" />
+                    )}
+                    <span>Test {i + 1}:</span>
+                    <span className="font-semibold">
+                      {verdictLabel(tr.verdict)}
+                    </span>
+                  </div>
+                  {tr.executionTimeMs != null && (
+                    <span className="text-gray-400 text-[11px]">
+                      {formatMs(tr.executionTimeMs)}
+                    </span>
+                  )}
+                </div>
+              ))}
+
+              {/* The judge stops at the first failure, so the rest never ran. */}
+              {!isJudging &&
+                failedResult &&
+                submission.totalTestCases > results.length && (
+                  <div className="px-3 py-2 text-[11px] font-sans text-gray-500">
+                    Judging stopped at test {results.indexOf(failedResult) + 1};
+                    the remaining{" "}
+                    {submission.totalTestCases - results.length} testcase
+                    {submission.totalTestCases - results.length === 1
+                      ? ""
+                      : "s"}{" "}
+                    were not run.
+                  </div>
+                )}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function OutputBlock({
+  label,
+  value,
+  error = false,
+}: {
+  label: string;
+  value: string;
+  error?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">
+        {label}
+      </div>
+      <pre
+        className={`rounded-lg border border-[#333333] bg-[#1f1f1f] px-3 py-2 overflow-x-auto whitespace-pre-wrap break-words ${
+          error ? "text-[#ef4743]" : "text-gray-200"
+        }`}
+      >
+        {value.trim() === "" ? "(empty)" : value}
+      </pre>
     </div>
   );
 }
@@ -351,7 +674,6 @@ export default function ProblemDetailPage() {
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSubmission, setActiveSubmission] = useState<Submission | null>(null);
-  const [activeSubmissionExpanded, setActiveSubmissionExpanded] = useState(true);
   const [pastSubmissions, setPastSubmissions] = useState<SubmissionEntry[]>([]);
   const cleanupSseRef = useRef<(() => void) | null>(null);
   // Read by handleSubmit to archive the previous run without taking
@@ -366,6 +688,33 @@ export default function ProblemDetailPage() {
   // Submission ids already celebrated, so re-renders and tab switches don't
   // re-trigger the popup for a result the user has already seen.
   const celebratedRef = useRef<Set<string>>(new Set());
+
+  // Persisted submission history for this problem (server-paginated).
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const [history, setHistory] = useState<SubmissionListItem[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPagination, setHistoryPagination] =
+    useState<Pagination | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  // Bumped to force a refetch once a submission reaches a terminal state.
+  const [historyKey, setHistoryKey] = useState(0);
+  // The row opened in the detail view, plus the full records fetched from
+  // GET /api/submissions/:id — the list endpoint returns neither testResults
+  // nor sourceCode.
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(
+    null,
+  );
+  const [detailsById, setDetailsById] = useState<Record<string, Submission>>({});
+  const [detailLoadingIds, setDetailLoadingIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [detailError, setDetailError] = useState<
+    { id: string; message: string } | null
+  >(null);
+  // Ids already requested, so going back and reopening doesn't refetch.
+  const fetchedDetailsRef = useRef<Set<string>>(new Set());
 
   // Run and Testcase state
   const [testCaseItems, setTestCaseItems] = useState<TestCaseItem[]>([]);
@@ -594,6 +943,151 @@ export default function ProblemDetailPage() {
     };
   }, []);
 
+  // Navigating to another problem invalidates every cached row. Adjusting
+  // during render rather than in an effect drops the stale rows in the same
+  // pass, so the previous problem's history is never painted under the new one.
+  const [historySlug, setHistorySlug] = useState(slug);
+  if (historySlug !== slug) {
+    setHistorySlug(slug);
+    setHistory([]);
+    setHistoryPagination(null);
+    setHistoryPage(1);
+    setHistoryError(null);
+    setSelectedSubmissionId(null);
+    setDetailError(null);
+    setDetailsById({});
+    // fetchedDetailsRef isn't cleared: submission ids are globally unique, so
+    // entries from another problem can never collide with these rows.
+  }
+
+  /**
+   * Loads the persisted history lazily — only once the user actually opens the
+   * Submissions tab, and only while signed in (the endpoint is authenticated
+   * and scopes rows to the caller).
+   */
+  useEffect(() => {
+    if (activeTab !== "submissions") return;
+
+    const problemId = state.problem?.id;
+    if (!problemId || !userId) return;
+
+    let cancelled = false;
+
+    const load = async () => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+
+      try {
+        const response = await getSubmissions(problemId, historyPage);
+        if (cancelled) return;
+        if (response.success) {
+          setHistory(response.submissions);
+          setHistoryPagination(response.pagination);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setHistoryError(
+          err instanceof Error ? err.message : "Failed to load submissions.",
+        );
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, state.problem?.id, userId, historyPage, historyKey]);
+
+  /**
+   * Pulls the whole record — source code and per-test results included — from
+   * GET /api/submissions/:id. The list endpoint carries neither, so this is
+   * what the detail view actually renders. Fetched once per id; `force` is for
+   * the retry button.
+   */
+  const fetchSubmissionDetail = useCallback(
+    (id: string, { force = false }: { force?: boolean } = {}) => {
+      if (!force && fetchedDetailsRef.current.has(id)) return;
+
+      fetchedDetailsRef.current.add(id);
+      setDetailLoadingIds((prev) => new Set(prev).add(id));
+      setDetailError((prev) => (prev?.id === id ? null : prev));
+
+      getSubmission(id)
+        .then((response) => {
+          if (response.success) {
+            setDetailsById((prev) => ({ ...prev, [id]: response.submission }));
+          }
+        })
+        .catch((err) => {
+          // Let the retry button try again rather than stranding the view.
+          fetchedDetailsRef.current.delete(id);
+          setDetailError({
+            id,
+            message:
+              err instanceof Error
+                ? err.message
+                : "Failed to load this submission.",
+          });
+        })
+        .finally(() => {
+          setDetailLoadingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        });
+    },
+    [],
+  );
+
+  /**
+   * Opens a row in the detail view. A run that is still judging is rendered
+   * live from the stream instead — its stored record has nothing in it yet,
+   * and the detail is fetched once the verdict lands.
+   */
+  const handleOpenSubmission = useCallback(
+    (submission: Submission) => {
+      setSelectedSubmissionId(submission.id);
+
+      if (
+        submission.status === "QUEUED" ||
+        submission.status === "RUNNING"
+      ) {
+        return;
+      }
+
+      fetchSubmissionDetail(submission.id);
+    },
+    [fetchSubmissionDetail],
+  );
+
+  // A run opened while judging finishes without a fetch: pick up the stored
+  // record (source code, final results) once the verdict has landed *and* the
+  // paced reveal has caught up — fetching earlier would swap the full result
+  // set in mid-animation.
+  useEffect(() => {
+    if (!activeSubmission || selectedSubmissionId !== activeSubmission.id) {
+      return;
+    }
+    if (
+      activeSubmission.status !== "COMPLETED" &&
+      activeSubmission.status !== "FAILED"
+    ) {
+      return;
+    }
+    if (revealedCount < (activeSubmission.testResults?.length ?? 0)) return;
+
+    fetchSubmissionDetail(activeSubmission.id);
+  }, [
+    activeSubmission,
+    selectedSubmissionId,
+    revealedCount,
+    fetchSubmissionDetail,
+  ]);
+
   /**
    * Falls back to polling the durable record when the judge stream can't be
    * read (network fault, or the stream ending before a verdict). Without this
@@ -603,6 +1097,9 @@ export default function ProblemDetailPage() {
     const finish = () => {
       setIsSubmitting(false);
       cleanupSseRef.current = null;
+      // The row is now persisted — pull it into the paginated history so the
+      // totals and page contents match the server.
+      setHistoryKey((key) => key + 1);
     };
 
     cleanupSseRef.current = pollSubmission(
@@ -647,8 +1144,10 @@ export default function ProblemDetailPage() {
       ]);
     }
     setActiveSubmission(null);
-    setActiveSubmissionExpanded(true);
+    setSelectedSubmissionId(null);
     setRevealedCount(0);
+    // The new run belongs at the top of the history, which is page 1.
+    setHistoryPage(1);
 
     try {
       const response = await createSubmission(
@@ -670,6 +1169,8 @@ export default function ProblemDetailPage() {
 
       setActiveSubmission(submission);
       setActiveTab("submissions");
+      // Land straight on the detail view, where the run is judged live.
+      setSelectedSubmissionId(submission.id);
 
       if (submission.status === "COMPLETED" || submission.status === "FAILED") {
         setIsSubmitting(false);
@@ -714,6 +1215,7 @@ export default function ProblemDetailPage() {
         },
         onVerdict: (event) => {
           setIsSubmitting(false);
+          setHistoryKey((key) => key + 1);
 
           setActiveSubmission((prev) => {
             const base = prev && prev.id === submission.id ? prev : submission;
@@ -813,12 +1315,65 @@ export default function ProblemDetailPage() {
       activeSubmission.status === "QUEUED" ||
       activeSubmission.status === "RUNNING");
 
-  const allSubmissionsList = [
-    ...(activeSubmission ? [activeSubmission] : []),
-    ...pastSubmissions
-      .map((p) => p.submission)
-      .filter((s) => s.id !== activeSubmission?.id),
-  ];
+  /**
+   * Page 1 shows this session's rows on top: the in-flight submission isn't
+   * in the server list yet, and the ones just finished carry streamed
+   * testResults the list endpoint doesn't return. Deeper pages are purely
+   * server-driven. Ids are deduped, session rows winning.
+   */
+  const sessionRows: Submission[] =
+    historyPage === 1
+      ? [
+          ...(activeSubmission ? [activeSubmission] : []),
+          ...pastSubmissions.map((p) => p.submission),
+        ]
+      : [];
+
+  const historyRows: Submission[] = history.map((item) => {
+    const detail = detailsById[item.id];
+    return detail ? { ...item, ...detail } : item;
+  });
+
+  const allSubmissionsList: Submission[] = [];
+  const seenSubmissionIds = new Set<string>();
+  for (const submission of [...sessionRows, ...historyRows]) {
+    if (seenSubmissionIds.has(submission.id)) continue;
+    seenSubmissionIds.add(submission.id);
+    allSubmissionsList.push(submission);
+  }
+
+  // Row numbers run through the whole history rather than restarting on each
+  // page: page 1 starts at 1, page 2 continues from where it left off.
+  const historyLimit = historyPagination?.limit ?? SUBMISSIONS_PAGE_SIZE;
+  const pageOffset = ((historyPagination?.page ?? historyPage) - 1) * historyLimit;
+
+  /**
+   * What the detail view renders: the fetched record layered over whatever the
+   * list already knows, so opening a row shows its verdict and runtime
+   * immediately and fills in source and per-test results when they land. A row
+   * being judged has no fetched record yet and comes straight off the stream.
+   */
+  const selectedListRow = selectedSubmissionId
+    ? allSubmissionsList.find((s) => s.id === selectedSubmissionId) ?? null
+    : null;
+  const selectedDetail = selectedSubmissionId
+    ? detailsById[selectedSubmissionId]
+    : undefined;
+  const selectedSubmission: Submission | null = selectedSubmissionId
+    ? selectedListRow && selectedDetail
+      ? {
+          ...selectedListRow,
+          ...selectedDetail,
+          // Streamed results carry the case's input and expected output, which
+          // the stored ones don't — keep them when the judge sent as many.
+          testResults:
+            (selectedListRow.testResults?.length ?? 0) >=
+            (selectedDetail.testResults?.length ?? 0)
+              ? selectedListRow.testResults
+              : selectedDetail.testResults,
+        }
+      : selectedDetail ?? selectedListRow
+    : null;
 
   return (
     <div
@@ -936,8 +1491,33 @@ export default function ProblemDetailPage() {
             </div>
           )}
 
+          {/* Submissions Tab — one row's full record */}
+          {activeTab === "submissions" && selectedSubmissionId && (
+            <SubmissionDetailView
+              submission={selectedSubmission}
+              loading={detailLoadingIds.has(selectedSubmissionId)}
+              error={
+                detailError?.id === selectedSubmissionId
+                  ? detailError.message
+                  : null
+              }
+              onBack={() => setSelectedSubmissionId(null)}
+              onRetry={() =>
+                fetchSubmissionDetail(selectedSubmissionId, { force: true })
+              }
+              revealedCount={
+                // Pace the reveal only while the run is streaming; once the
+                // stored record is in hand it is complete and shown in full.
+                selectedSubmissionId === activeSubmission?.id &&
+                !detailsById[selectedSubmissionId]
+                  ? revealedCount
+                  : undefined
+              }
+            />
+          )}
+
           {/* Submissions Tab (LeetCode Table Screenshot Match) */}
-          {activeTab === "submissions" && (
+          {activeTab === "submissions" && !selectedSubmissionId && (
             <div className="flex flex-col h-full">
               {/* Table Header Bar */}
               <div className="grid grid-cols-12 px-4 py-2.5 text-xs font-medium text-gray-400 border-b border-[#282828] bg-[#262626]">
@@ -948,32 +1528,83 @@ export default function ProblemDetailPage() {
                 <span className="col-span-2 text-right">Details</span>
               </div>
 
-              {allSubmissionsList.length === 0 ? (
+              {!user ? (
                 <div className="p-12 text-center text-gray-400 text-sm">
-                  No submissions yet. Click <strong className="text-white font-semibold">Submit</strong> to run your solution against all hidden test cases.
+                  Sign in to see your submission history for this problem.
+                </div>
+              ) : historyLoading && allSubmissionsList.length === 0 ? (
+                <div className="p-12 flex items-center justify-center gap-2 text-gray-400 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading submissions…
+                </div>
+              ) : allSubmissionsList.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 text-sm">
+                  {historyError ? (
+                    <span className="flex flex-col items-center gap-3">
+                      <span className="text-[#ef4743]">{historyError}</span>
+                      <button
+                        onClick={() => setHistoryKey((key) => key + 1)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#282828] border border-[#383838] text-gray-200 hover:bg-[#333333] transition-colors text-xs"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Retry
+                      </button>
+                    </span>
+                  ) : (
+                    <>
+                      No submissions yet. Click <strong className="text-white font-semibold">Submit</strong> to run your solution against all hidden test cases.
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="divide-y divide-[#282828]">
-                  {allSubmissionsList.map((sub, idx) => (
-                    <LeetCodeSubmissionRow
-                      key={sub.id}
-                      submission={sub}
-                      index={idx}
-                      total={allSubmissionsList.length}
-                      expanded={sub.id === activeSubmission?.id ? activeSubmissionExpanded : false}
-                      revealedCount={
-                        sub.id === activeSubmission?.id
-                          ? revealedCount
-                          : undefined
-                      }
-                      onToggle={() => {
-                        if (sub.id === activeSubmission?.id) {
-                          setActiveSubmissionExpanded((prev) => !prev);
+                <>
+                  <div className="divide-y divide-[#282828]">
+                    {allSubmissionsList.map((sub, idx) => (
+                      <LeetCodeSubmissionRow
+                        key={sub.id}
+                        submission={sub}
+                        rowNum={pageOffset + idx + 1}
+                        detailLoading={detailLoadingIds.has(sub.id)}
+                        revealedCount={
+                          sub.id === activeSubmission?.id
+                            ? revealedCount
+                            : undefined
                         }
-                      }}
-                    />
-                  ))}
-                </div>
+                        onOpen={() => handleOpenSubmission(sub)}
+                      />
+                    ))}
+                  </div>
+
+                  {historyPagination && historyPagination.totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-[#282828] bg-[#1f1f1f] text-xs text-gray-400">
+                      <span>
+                        Page {historyPagination.page} of{" "}
+                        {historyPagination.totalPages} · {historyPagination.total}{" "}
+                        submission{historyPagination.total === 1 ? "" : "s"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            setHistoryPage((page) => Math.max(1, page - 1))
+                          }
+                          disabled={!historyPagination.hasPrevPage || historyLoading}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#282828] border border-[#383838] text-gray-200 hover:bg-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          Prev
+                        </button>
+                        <button
+                          onClick={() => setHistoryPage((page) => page + 1)}
+                          disabled={!historyPagination.hasNextPage || historyLoading}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#282828] border border-[#383838] text-gray-200 hover:bg-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Next
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

@@ -71,7 +71,6 @@ export class SubmissionService {
         ...result,
         ordinal: testCase.ordinal,
         isSample: testCase.isSample,
-        
         input: result.verdict !== "AC" ? testCase.input : undefined,
         expectedOutput:
           result.verdict !== "AC" ? testCase.expectedOutput : undefined,

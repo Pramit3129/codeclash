@@ -4,6 +4,7 @@ import type {
   Submission,
   CreateSubmissionResponse,
   GetSubmissionResponse,
+  GetSubmissionsResponse,
   JudgeProgressEvent,
   JudgeVerdictEvent,
 } from "./types";
@@ -37,6 +38,28 @@ export async function getSubmission(
 ): Promise<GetSubmissionResponse> {
   return apiJson<GetSubmissionResponse>(
     `/api/submissions/${submissionId}`,
+  );
+}
+
+/** Server caps `limit` at 50 (see getSubmissionsQuerySchema). */
+export const SUBMISSIONS_PAGE_SIZE = 10;
+
+/**
+ * The current user's submissions for one problem, newest first. Scoped to the
+ * caller server-side — there is no userId parameter to pass.
+ */
+export async function getSubmissions(
+  problemId: string,
+  page = 1,
+  limit = SUBMISSIONS_PAGE_SIZE,
+): Promise<GetSubmissionsResponse> {
+  const query = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+
+  return apiJson<GetSubmissionsResponse>(
+    `/api/submissions/getSubmissions/${encodeURIComponent(problemId)}?${query}`,
   );
 }
 

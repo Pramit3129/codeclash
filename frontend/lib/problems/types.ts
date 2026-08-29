@@ -100,6 +100,12 @@ export interface TestResult {
   stderr: string;
   exitCode: number | null;
   executionTimeMs: number;
+  ordinal?: number;
+  isSample?: boolean;
+  /**
+   * The fixture behind this result. Present for sample cases and for the case
+   * a run failed on; withheld for hidden cases that passed.
+   */
   input?: string;
   expectedOutput?: string;
 }
@@ -119,7 +125,45 @@ export interface Submission {
   totalTestCases: number;
   passedTestCases: number;
   testResults?: TestResult[];
+  /** The exact source that was judged; returned only by GET /api/submissions/:id. */
+  sourceCode?: string;
+  /** Wall-clock time of the whole judge run; absent until it completes. */
+  executionTimeMs?: number | null;
+  /** Set only when status = FAILED — an infrastructure fault, not a verdict. */
+  failureReason?: string | null;
   createdAt: string;
+}
+
+/**
+ * A row of GET /api/submissions/getSubmissions/:problemId. The list endpoint
+ * deliberately omits `testResults` and `sourceCode`; a row's per-test detail
+ * is fetched from GET /api/submissions/:id when the user expands it.
+ */
+export interface SubmissionListItem {
+  id: string;
+  language: Language;
+  status: SubmissionStatus;
+  verdict: SubmissionVerdict;
+  totalTestCases: number;
+  passedTestCases: number;
+  executionTimeMs: number | null;
+  failureReason: string | null;
+  createdAt: string;
+}
+
+export interface Pagination {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+export interface GetSubmissionsResponse {
+  success: boolean;
+  submissions: SubmissionListItem[];
+  pagination: Pagination;
 }
 
 export interface CreateSubmissionResponse {
