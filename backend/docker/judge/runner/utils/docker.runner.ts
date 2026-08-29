@@ -20,6 +20,32 @@ const DOCKER_AUX_TIMEOUT_MS = 10_000;
 const COMPILE_TIMEOUT_MS = 20_000;
 const MAX_COMPILE_OUTPUT_BYTES = 8 * 1024;
 
+// Compilers need far more memory than the programs they emit. Peak host usage
+// is this times JUDGE_CONCURRENCY, so size it against the VPS.
+const COMPILE_MEMORY_MB = positiveIntFromEnv(
+  process.env.JUDGE_COMPILE_MEMORY_MB,
+  768,
+);
+const COMPILE_CPUS = process.env.JUDGE_COMPILE_CPUS ?? "2";
+const RUNTIME_CPUS = process.env.JUDGE_RUNTIME_CPUS ?? "0.5";
+
+// Holds build output only; kept off the program's memory budget.
+const TMPFS_SIZE_MB = positiveIntFromEnv(process.env.JUDGE_TMPFS_MB, 128);
+
+// An OOM-killed compiler surfaces as a signal, not a diagnostic.
+const COMPILE_OOM_PATTERNS = [
+  /Killed signal terminated program/i,
+  /cc1plus.*(Killed|signal 9)/i,
+  /internal compiler error.*Killed/i,
+  /java\.lang\.OutOfMemoryError/i,
+];
+
+function positiveIntFromEnv(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw.trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /** How much of each stream is kept when the caller doesn't ask for more. */
 const DEFAULT_MAX_STORED_OUTPUT_BYTES = 4 * 1024;
 const COMPILE_TIMEOUT_EXIT_CODE = 124;
@@ -47,10 +73,16 @@ export class DockerRunner {
 
     const containerName = `algoriumx-${executionId}`;
 
+    // Started wide for the compiler, narrowed before user code runs.
+    const startMemoryMb = config.compiled
+      ? Math.max(COMPILE_MEMORY_MB, request.memoryLimitMb)
+      : request.memoryLimitMb;
+
     await this.startContainer({
       containerName,
       executionDir,
-      memoryLimitMb: request.memoryLimitMb,
+      memoryLimitMb: startMemoryMb,
+      cpus: config.compiled ? COMPILE_CPUS : RUNTIME_CPUS,
       config,
     });
 
@@ -75,7 +107,11 @@ export class DockerRunner {
       return null;
     }
 
-    return new Promise((resolve, reject) => {
+    const result = await new Promise<{
+      exitCode: number | null;
+      stdout: string;
+      stderr: string;
+    }>((resolve, reject) => {
       const child = spawn("docker", [
         "exec",
         "-i",
@@ -141,6 +177,79 @@ export class DockerRunner {
         clearTimeout(timer);
         resolve({ exitCode, stdout, stderr });
       });
+    });
+
+    if (result.exitCode !== 0) {
+      return config.compiled && this.looksLikeCompileOOM(result.stderr)
+        ? {
+            ...result,
+            stderr:
+              result.stderr +
+              `\nThe compiler ran out of memory (limit ${COMPILE_MEMORY_MB}MB).`,
+          }
+        : result;
+    }
+
+    // Narrowed here, not at call sites: a missed call would hand user code the
+    // compiler's budget and break MLE.
+    if (config.compiled) {
+      await this.applyRuntimeLimits(sandbox, request.memoryLimitMb);
+    }
+
+    return result;
+  }
+
+  // Poisons the sandbox on failure so execute() refuses rather than running
+  // user code with the compiler's headroom.
+  private async applyRuntimeLimits(
+    sandbox: Sandbox,
+    memoryLimitMb: number,
+  ): Promise<void> {
+    const ok = await this.runDockerAux([
+      "update",
+      "--memory",
+      `${memoryLimitMb}m`,
+      "--memory-swap",
+      `${memoryLimitMb}m`,
+      "--cpus",
+      RUNTIME_CPUS,
+      sandbox.containerName,
+    ]);
+
+    if (!ok) {
+      sandbox.poisoned = true;
+      throw new Error(
+        `Failed to apply runtime limits to ${sandbox.containerName}`,
+      );
+    }
+  }
+
+  private looksLikeCompileOOM(stderr: string): boolean {
+    return COMPILE_OOM_PATTERNS.some((pattern) => pattern.test(stderr));
+  }
+
+  // Short-lived docker command; false on failure or timeout.
+  private runDockerAux(args: string[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      const child = spawn("docker", args);
+      let settled = false;
+
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+
+      const timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {}
+        finish(false);
+      }, DOCKER_AUX_TIMEOUT_MS);
+
+      child.on("error", () => finish(false));
+      child.on("close", (code) => finish(code === 0));
     });
   }
 
@@ -366,11 +475,13 @@ export class DockerRunner {
     containerName,
     executionDir,
     memoryLimitMb,
+    cpus,
     config,
   }: {
     containerName: string;
     executionDir: string;
     memoryLimitMb: number;
+    cpus: string;
     config: LanguageConfig;
   }): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -388,10 +499,10 @@ export class DockerRunner {
         "--memory-swap",
         `${memoryLimitMb}m`,
         "--cpus",
-        "0.5",
+        cpus,
         "--read-only",
         "--tmpfs",
-        `/tmp:exec,size=${memoryLimitMb}m`,
+        `/tmp:exec,size=${TMPFS_SIZE_MB}m,mode=1777,nosuid,nodev`,
         "--cap-drop",
         "ALL",
         "--security-opt",

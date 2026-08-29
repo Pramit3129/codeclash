@@ -12,11 +12,24 @@ services:
       # Must match the bind mount below on both sides.
       JUDGE_WORK_DIR: /tmp/algoriumx
 
-      # Judge jobs processed in parallel. Each concurrent job runs its
-      # own sandbox at 0.5 CPU and the problem's memory limit, so raise
-      # this only with host capacity to match - oversubscription inflates
-      # wall-clock time and causes spurious TLE verdicts.
+      # Judge jobs processed in parallel. Each concurrent job holds a
+      # sandbox at the compile budget below while building, then drops to
+      # the problem's memory limit, so raise this only with host capacity
+      # to match - oversubscription inflates wall-clock time and causes
+      # spurious TLE verdicts.
       JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-1}
+
+      # Compilers need far more memory than the programs they emit; g++ on
+      # <bits/stdc++.h> is OOM-killed below ~320MB. Budget for
+      # JUDGE_COMPILE_MEMORY_MB x JUDGE_CONCURRENCY of headroom.
+      JUDGE_COMPILE_MEMORY_MB: ${JUDGE_COMPILE_MEMORY_MB:-768}
+      JUDGE_COMPILE_CPUS: ${JUDGE_COMPILE_CPUS:-2}
+
+      # Applied to user code, after compilation.
+      JUDGE_RUNTIME_CPUS: ${JUDGE_RUNTIME_CPUS:-0.5}
+
+      # Sandbox /tmp, holding build output only.
+      JUDGE_TMPFS_MB: ${JUDGE_TMPFS_MB:-128}
 
       FRONTEND_URL: ${FRONTEND_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}

@@ -5,6 +5,8 @@ export interface LanguageConfig {
   sourceFile: string;
   prepareCommand: string[];
   executeCommand: string[];
+  // Prepare step runs a real compiler and needs its own memory budget.
+  compiled: boolean;
 }
 
 export const LANGUAGE_CONFIG: Record<
@@ -23,6 +25,7 @@ export const LANGUAGE_CONFIG: Record<
       "python3",
       "/sandbox/main.py",
     ],
+    compiled: false,
   },
 
   javascript: {
@@ -37,6 +40,7 @@ export const LANGUAGE_CONFIG: Record<
       "node",
       "/sandbox/main.js",
     ],
+    compiled: false,
   },
 
   java: {
@@ -53,6 +57,7 @@ export const LANGUAGE_CONFIG: Record<
       "/tmp/java",
       "Main",
     ],
+    compiled: true,
   },
 
   cpp: {
@@ -66,5 +71,6 @@ export const LANGUAGE_CONFIG: Record<
     executeCommand: [
       "/tmp/main",
     ],
+    compiled: true,
   },
 };
