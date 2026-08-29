@@ -220,6 +220,9 @@ model Submission {
   @@index([userId, createdAt])
   @@index([problemId, createdAt])
   @@index([verdict])
+
+  @@index([userId, problemId, createdAt])
+
   // Supports the recovery sweep for submissions stranded in RUNNING.
   @@index([status, createdAt])
 }

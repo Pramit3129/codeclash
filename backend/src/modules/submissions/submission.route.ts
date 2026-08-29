@@ -9,6 +9,7 @@ import {
   createSubmission,
   getSubmission,
   streamSubmission,
+  getSubmissions
 } from "./submission.controller.js";
 
 export const submissionRouter = express.Router();
@@ -49,5 +50,6 @@ submissionRouter.get(
   authorize("USER", "ADMIN"),
   asyncHandler(getSubmission),
 );
+submissionRouter.get("/getSubmissions/:problemId", authenticate, authorize("USER", "ADMIN"), asyncHandler(getSubmissions));
 
 export default submissionRouter;

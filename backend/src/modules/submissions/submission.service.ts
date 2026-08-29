@@ -7,6 +7,7 @@ import { SubmissionService as RunnerSubmissionService } from "../../../docker/ju
 import { ProblemRepository } from "../../../docker/judge/runner/repositories/problem.repository.ts";
 import { SubmissionRepository } from "../../../docker/judge/runner/repositories/submission.repository.ts";
 import type { SupportedLanguage } from "../../../docker/judge/runner/types/runner.type.ts";
+import { tr } from "zod/locales";
 
 export class SubmissionService {
   private getRunnerService() {
@@ -147,6 +148,29 @@ export class SubmissionService {
       await cleanup();
       return res.end();
     }
+  }
+  async getUserSubmissions(userId: string, problemId: string) {
+    const submissions = await prisma.submission.findMany({
+      where: {
+        userId,
+        problemId
+      },
+      select:{
+        passedTestCases:true,
+        totalTestCases:true,
+        verdict: true,
+        createdAt: true,
+        language: true,
+        id: true,
+        failureReason: true,
+        status: true,
+        executionTimeMs: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
+    return submissions;
   }
 }
 

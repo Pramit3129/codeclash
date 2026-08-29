@@ -56,3 +56,8 @@ export const submissionIdSchema = z.object({
 export type CreateSubmissionInput = z.infer<
   typeof createSubmissionSchema
 >;
+
+export const problemIdSchema = z.object({
+  problemId: z.string().min(1).max(64),
+});
+

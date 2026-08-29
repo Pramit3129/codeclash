@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { BadRequestError } from "../../utils/errors.js";
 import {
   createSubmissionSchema,
+  problemIdSchema,
   submissionIdSchema,
 } from "./submission.types.js";
 import { submissionService } from "./submission.service.ts";
@@ -83,3 +84,24 @@ export const streamSubmission = async (
     res,
   );
 };
+
+export const getSubmissions = async (req: Request, res: Response) => {
+  const user = req.auth?.userId;
+  const result = problemIdSchema.safeParse(req.params);
+
+  if (!result.success) {
+    throw new BadRequestError("Invalid Problem ID", {
+      details: result.error.flatten().fieldErrors,
+    });
+  }
+
+  const submissions = await submissionService.getUserSubmissions(
+    req.auth!.userId,
+    result.data.problemId,
+  );
+
+  return res.status(200).json({
+    success: true,
+    submissions,
+  });
+}
