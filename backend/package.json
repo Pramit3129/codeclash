@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "bun --watch src/server.ts",
+    "worker": "bun --watch src/judge-worker.ts",
     "build": "bun build src/server.ts src/judge-worker.ts --outdir ./dist --target node",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",

@@ -56,6 +56,7 @@ export class SubmissionService {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
     const sendEvent = (event: string, data: unknown) => {
@@ -65,6 +66,9 @@ export class SubmissionService {
           data,
         })}\n\n`,
       );
+      if (typeof (res as any).flush === "function") {
+        (res as any).flush();
+      }
     };
 
     // If submission is already finished before SSE connection opens

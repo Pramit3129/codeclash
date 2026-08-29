@@ -4,9 +4,15 @@ import { UnauthorizedError } from "../utils/errors.js";
 
 function extractBearer(req: Request): string | null {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) return null;
-  const token = header.slice("Bearer ".length).trim();
-  return token.length > 0 ? token : null;
+  if (header && header.startsWith("Bearer ")) {
+    const token = header.slice("Bearer ".length).trim();
+    if (token.length > 0) return token;
+  }
+  const queryToken = req.query.token as string | undefined;
+  if (queryToken && queryToken.trim().length > 0) {
+    return queryToken.trim();
+  }
+  return null;
 }
 
 // Requires a valid access token. Populates req.auth or throws 401.
