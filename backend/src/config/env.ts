@@ -39,6 +39,10 @@ const envSchema = z.object({
   GITHUB_CLIENT_SECRET: z.string().min(1, "GITHUB_CLIENT_SECRET is required"),
   GITHUB_REDIRECT_URI: z.string().url("GITHUB_REDIRECT_URI must be a valid URL"),
   GITHUB_SCOPES: z.string().default("read:user user:email repo"),
+
+  WS_PORT: z.coerce.number().int().positive().default(8000),
+  CLIENT_ORIGIN: z.string().url("CLIENT_ORIGIN must be a valid URL"),
+
 });
 
 const _env = envSchema.safeParse(process.env);
