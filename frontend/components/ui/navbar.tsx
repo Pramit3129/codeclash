@@ -51,6 +51,7 @@ function getInitials(name: string): string {
 }
 
 const NAV_LINKS = [
+  { label: "Compete", href: "/compete" },
   { label: "Problems", href: "/problems" },
   { label: "Features", href: "#features" },
   { label: "How it works", href: "#how-it-works" },
