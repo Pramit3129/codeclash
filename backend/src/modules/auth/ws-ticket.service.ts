@@ -3,17 +3,17 @@ import { redis } from '../../lib/redis';
 
 const TICKET_TTL_SECONDS = 2 * 60 ; // ( 2 minutes ) 
 
-interface validateTicketRes {
+export interface validateTicketRes {
     message: string,
     userId: string | null
 }
 
-interface wsTicket {
-    ticket : string,
+export interface wsTicket {
+    ticket: string,
     TTL: number,
 }
 
-export async function issueTicket(userId : string): Promise<wsTicket | null> {
+export async function issueTicket(userId: string): Promise<wsTicket | null> {
     if(!userId){
         return null;
     }

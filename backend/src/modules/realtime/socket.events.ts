@@ -17,7 +17,7 @@ export function registerSocketEvents(socket: Socket) {
         if (!matchId) return;
 
         const matchRoom = joinMatchRoom(socket, matchId);
-        console.log(`User: ${socket.id} joined match room ${matchRoom}`);
+        console.log(`User: ${socket.data.userId} joined match room ${matchRoom}`);
 
         // 1. Confirm to the joining client
         socket.emit('match.joined', { matchId });
