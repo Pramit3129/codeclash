@@ -7,9 +7,12 @@
   },
   "scripts": {
     "dev": "bun --watch src/server.ts",
+    "dev:realtime": "bun --watch src/ws-server.ts",
     "worker": "bun --watch src/judge-worker.ts",
     "build": "bun build src/server.ts src/judge-worker.ts --outdir ./dist --target node",
+    "build:realtime": "bun build src/ws-server.ts --outdir ./dist --target node",
     "start": "node dist/server.js",
+    "start:realtime": "node dist/ws-server.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

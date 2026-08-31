@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 import { registerSocketEvents } from './socket.events.js';
 import { socketAuthMiddleware } from './socket.auth.middleware.js';
 import { joinUserRoom } from './socket.rooms.js';
+import { setSocketServer } from './socket.service.js';
 
 export function createSocketServer(httpServer: HttpServer) {
     const io = new Server(httpServer, {
@@ -14,6 +15,8 @@ export function createSocketServer(httpServer: HttpServer) {
             credentials: true
         }
     });
+
+    setSocketServer(io);
 
     io.use(socketAuthMiddleware);
 
