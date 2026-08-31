@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { redis } from '../../lib/redis';
 
-const ticket_TTL = 2 * 60 * 1000; // ( 2 min ms ) 
+const TICKET_TTL_SECONDS = 2 * 60 ; // ( 2 minutes ) 
 
 interface validateTicketRes {
     message: string,
@@ -10,19 +10,19 @@ interface validateTicketRes {
 
 interface wsTicket {
     ticket : string,
-    TTL: string,
+    TTL: number,
 }
 
-export async function issueTicket(userId : String): Promise<wsTicket | null> {
+export async function issueTicket(userId : string): Promise<wsTicket | null> {
     if(!userId){
         return null;
     }
     const ticket = randomBytes(16).toString('base64url');
     const ticketKey = `ws-ticket:${ticket}`;
-    await redis.setex(ticketKey, ticket_TTL, userId.toString());
+    await redis.setex(ticketKey, TICKET_TTL_SECONDS, userId.toString());
     return {
         ticket: ticket,
-        TTL: ticket_TTL.toString()
+        TTL: TICKET_TTL_SECONDS
     };
 }
 
