@@ -10,6 +10,19 @@ import type {
 
 export type MatchRoomStatus = "idle" | "joining" | "joined" | "error";
 
+/** A `room.joined` / `room.left` broadcast, kept for the activity feed. */
+export interface MatchRoomActivity {
+  id: string;
+  type: "joined" | "left";
+  userId: string;
+  at: number;
+}
+
+/** How many membership events the feed retains. */
+const MAX_ACTIVITY = 20;
+
+let activitySeq = 0;
+
 export interface MatchRoomState {
   status: MatchRoomStatus;
   error: SocketErrorDetails | null;
@@ -19,6 +32,10 @@ export interface MatchRoomState {
    * "who arrived after us", not a full roster.
    */
   participants: string[];
+  /** Membership changes, newest first — lets the UI announce joins and leaves. */
+  activity: MatchRoomActivity[];
+  /** The most recent departure, so "opponent left" survives an empty roster. */
+  lastDeparture: MatchRoomActivity | null;
   leave: () => Promise<void>;
 }
 
@@ -41,6 +58,7 @@ export function useMatchRoom(matchId: string | null): MatchRoomState {
   const { on, emit, emitWithAck, socketId } = useRealtime();
   const [outcome, setOutcome] = useState<JoinOutcome | null>(null);
   const [participants, setParticipants] = useState<string[]>([]);
+  const [activity, setActivity] = useState<MatchRoomActivity[]>([]);
   // Tracks whether the server currently considers this socket in the room, so
   // teardown does not emit a leave for a room we never entered.
   const inRoomRef = useRef(false);
@@ -52,16 +70,28 @@ export function useMatchRoom(matchId: string | null): MatchRoomState {
   useEffect(() => {
     if (!matchId) return;
 
+    const record = (type: MatchRoomActivity["type"], userId: string) => {
+      const entry: MatchRoomActivity = {
+        id: `${type}-${userId}-${++activitySeq}`,
+        type,
+        userId,
+        at: Date.now(),
+      };
+      setActivity((prev) => [entry, ...prev].slice(0, MAX_ACTIVITY));
+    };
+
     const handleJoined = (payload: RoomMembershipEvent) => {
       if (payload?.matchId !== matchId || !payload.userId) return;
       setParticipants((prev) =>
         prev.includes(payload.userId) ? prev : [...prev, payload.userId],
       );
+      record("joined", payload.userId);
     };
 
     const handleLeft = (payload: RoomMembershipEvent) => {
       if (payload?.matchId !== matchId || !payload.userId) return;
       setParticipants((prev) => prev.filter((id) => id !== payload.userId));
+      record("left", payload.userId);
     };
 
     const offJoined = on("room.joined", handleJoined);
@@ -100,6 +130,7 @@ export function useMatchRoom(matchId: string | null): MatchRoomState {
         emit("match.leave", { matchId });
       }
       setParticipants([]);
+      setActivity([]);
       setOutcome(null);
     };
   }, [matchId, attemptKey, emit, emitWithAck]);
@@ -111,6 +142,7 @@ export function useMatchRoom(matchId: string | null): MatchRoomState {
       matchId,
     });
     setParticipants([]);
+    setActivity([]);
     setOutcome({
       key: attemptKey,
       status: response.success ? "left" : "error",
@@ -129,5 +161,19 @@ export function useMatchRoom(matchId: string | null): MatchRoomState {
     status = current.status;
   }
 
-  return { status, error: current?.error ?? null, participants, leave };
+  // Surfaces "opponent left" even though the roster is back to empty — but only
+  // while nobody has since rejoined.
+  const lastDeparture =
+    activity[0]?.type === "left" && participants.length === 0
+      ? activity[0]
+      : null;
+
+  return {
+    status,
+    error: current?.error ?? null,
+    participants,
+    activity,
+    lastDeparture,
+    leave,
+  };
 }

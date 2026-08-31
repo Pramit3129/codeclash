@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Users } from "lucide-react";
+import { LogIn, LogOut, UserMinus, Users } from "lucide-react";
 import { useRealtime } from "@/lib/realtime/RealtimeProvider";
 import { useMatchRoom } from "@/lib/realtime/useMatchRoom";
 
@@ -13,6 +13,18 @@ const ERROR_COPY: Record<string, string> = {
   TIMEOUT: "The realtime server did not respond. Try again.",
 };
 
+function shortId(userId: string): string {
+  return userId.length > 10 ? `${userId.slice(0, 6)}…${userId.slice(-4)}` : userId;
+}
+
+function formatTime(at: number): string {
+  return new Date(at).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 interface MatchRoomProps {
   matchId: string;
   onLeft: () => void;
@@ -20,7 +32,8 @@ interface MatchRoomProps {
 
 export function MatchRoom({ matchId, onLeft }: MatchRoomProps) {
   const { isConnected } = useRealtime();
-  const { status, error, participants, leave } = useMatchRoom(matchId);
+  const { status, error, participants, activity, lastDeparture, leave } =
+    useMatchRoom(matchId);
 
   const handleLeave = async () => {
     await leave();
@@ -61,15 +74,29 @@ export function MatchRoom({ matchId, onLeft }: MatchRoomProps) {
 
       {status === "joined" && (
         <div className="flex items-center gap-2.5 text-sm">
-          <Users className="w-4 h-4 text-ink-3 flex-shrink-0" />
-          {participants.length === 0 ? (
-            <span className="text-ink-2">Waiting for an opponent…</span>
+          {lastDeparture ? (
+            <>
+              <UserMinus className="w-4 h-4 text-danger flex-shrink-0" />
+              <span className="text-danger font-medium">
+                Opponent left the match
+              </span>
+              <span className="text-xs text-ink-3">
+                {formatTime(lastDeparture.at)}
+              </span>
+            </>
           ) : (
-            <span className="text-ink">
-              {participants.length === 1
-                ? "Opponent connected"
-                : `${participants.length} others connected`}
-            </span>
+            <>
+              <Users className="w-4 h-4 text-ink-3 flex-shrink-0" />
+              {participants.length === 0 ? (
+                <span className="text-ink-2">Waiting for an opponent…</span>
+              ) : (
+                <span className="text-ink">
+                  {participants.length === 1
+                    ? "Opponent connected"
+                    : `${participants.length} others connected`}
+                </span>
+              )}
+            </>
           )}
         </div>
       )}
@@ -86,6 +113,36 @@ export function MatchRoom({ matchId, onLeft }: MatchRoomProps) {
             </li>
           ))}
         </ul>
+      )}
+
+      {activity.length > 0 && (
+        <div className="pt-3 border-t border-line">
+          <p className="text-xs text-ink-3 mb-2">Room activity</p>
+          <ul className="space-y-1.5">
+            {activity.map((entry) => (
+              <li key={entry.id} className="flex items-center gap-2 text-xs">
+                {entry.type === "joined" ? (
+                  <LogIn className="w-3.5 h-3.5 text-success flex-shrink-0" />
+                ) : (
+                  <UserMinus className="w-3.5 h-3.5 text-danger flex-shrink-0" />
+                )}
+                <span className="font-mono text-ink-2">
+                  {shortId(entry.userId)}
+                </span>
+                <span
+                  className={
+                    entry.type === "joined" ? "text-success" : "text-danger"
+                  }
+                >
+                  {entry.type === "joined" ? "joined" : "left"}
+                </span>
+                <span className="text-ink-3 ml-auto tabular-nums">
+                  {formatTime(entry.at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
