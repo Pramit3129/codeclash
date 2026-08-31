@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { PowerOff, RefreshCw } from "lucide-react";
 import { useRealtime } from "@/lib/realtime/RealtimeProvider";
 import type { ConnectionStatus } from "@/lib/realtime/types";
 
@@ -28,7 +28,12 @@ const STATUS_TEXT: Record<ConnectionStatus, string> = {
   error: "text-danger",
 };
 
-export function ConnectionStatus() {
+interface ConnectionStatusProps {
+  /** Renders a "Go offline" action that tears the connection down. */
+  onGoOffline?: () => void;
+}
+
+export function ConnectionStatus({ onGoOffline }: ConnectionStatusProps) {
   const { status, error, needsManualRetry, retry, isConfigured } =
     useRealtime();
 
@@ -55,6 +60,16 @@ export function ConnectionStatus() {
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Reconnect
+        </button>
+      )}
+
+      {onGoOffline && (
+        <button
+          onClick={onGoOffline}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-2 hover:text-ink hover:bg-elevated rounded-lg transition-colors ml-auto"
+        >
+          <PowerOff className="w-3.5 h-3.5" />
+          Go offline
         </button>
       )}
     </div>

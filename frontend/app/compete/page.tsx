@@ -12,7 +12,8 @@ import { REALTIME_ENV_VAR } from "@/lib/realtime/config";
 
 export default function CompetePage() {
   const { user, loading } = useAuth();
-  const { isConfigured, isConnected } = useRealtime();
+  const { isConfigured, isConnected, status, connect, disconnect } =
+    useRealtime();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [matchIdInput, setMatchIdInput] = useState("");
@@ -29,6 +30,15 @@ export default function CompetePage() {
     if (!matchId) return;
     setActiveMatchId(matchId);
   };
+
+  const handleGoOffline = () => {
+    setActiveMatchId(null);
+    disconnect();
+  };
+
+  // "idle" means no socket has been opened yet — nothing connects, and no WS
+  // ticket is requested, until the user presses Ready.
+  const isOffline = status === "idle";
 
   return (
     <div className="min-h-screen bg-bg text-ink font-sans antialiased">
@@ -75,9 +85,30 @@ export default function CompetePage() {
             </div>
           )}
 
-          {!loading && user && isConfigured && (
+          {!loading && user && isConfigured && isOffline && (
+            <div className="p-8 rounded-xl bg-surface border border-line text-center">
+              <span className="w-12 h-12 mx-auto mb-4 rounded-full bg-accent/12 border border-accent/15 flex items-center justify-center">
+                <Swords className="w-5 h-5 text-accent" />
+              </span>
+              <h2 className="text-base font-semibold text-ink mb-1.5">
+                Ready to compete?
+              </h2>
+              <p className="text-sm text-ink-2 mb-5 max-w-sm mx-auto">
+                You are offline. Going ready opens your live connection to the
+                arena so opponents can reach you.
+              </p>
+              <button
+                onClick={connect}
+                className="h-10 px-6 rounded-full bg-accent text-accent-ink text-sm font-semibold hover:bg-accent-strong transition-colors"
+              >
+                I&rsquo;m ready
+              </button>
+            </div>
+          )}
+
+          {!loading && user && isConfigured && !isOffline && (
             <div className="space-y-4">
-              <ConnectionStatus />
+              <ConnectionStatus onGoOffline={handleGoOffline} />
 
               {activeMatchId ? (
                 <MatchRoom

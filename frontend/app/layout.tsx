@@ -41,6 +41,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} dark h-full antialiased`}
+      data-scroll-behavior="smooth"
     >
       <head>
         <script
