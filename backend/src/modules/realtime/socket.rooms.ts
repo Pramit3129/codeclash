@@ -68,3 +68,10 @@ export function isInSpectatorRoom(socket: Socket, matchId: string) {
     const roomName = getSpectatorRoomName(matchId);
     return socket.rooms.has(roomName);
 }
+
+// TODO: Enforce match membership once Match DB model exists
+export async function canUserJoinMatch(userId: string, matchId: string): Promise<boolean> {
+    if (!userId || !matchId) return false;
+    // Mock: allow join until DB Match model exists
+    return true;
+}
